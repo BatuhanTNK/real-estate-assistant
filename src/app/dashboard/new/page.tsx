@@ -93,6 +93,7 @@ export default function NewListingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ListingResult | null>(null);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // Form state — Genel
   const [propertyType, setPropertyType] = useState("");
@@ -182,7 +183,7 @@ export default function NewListingPage() {
 
     // Mülk tipine göre ek alanlar
     if (propertyType === "Daire" || propertyType === "Villa") {
-      formData.metpirlareNet = metrekareNet;
+      formData.metrekareNet = metrekareNet;
       formData.metrekareBrut = metrekareBrut;
       formData.odaSayisi = odaSayisi;
       formData.banyoSayisi = banyoSayisi;
@@ -249,6 +250,15 @@ export default function NewListingPage() {
   const showIsyeri = propertyType === "İşyeri";
   const showOrtak = showDaireVilla || showIsyeri || propertyType === "Diğer";
 
+  const step1Valid =
+    Boolean(propertyType) &&
+    Boolean(ilanTuru) &&
+    Boolean(il) &&
+    Boolean(ilce) &&
+    Boolean(price);
+
+  const stepLabels = ["Temel Bilgiler", "Mülk Detayları", "Ek Bilgiler & Üret"];
+
   return (
     <div>
       <div className="flex items-center gap-4 mb-8">
@@ -268,10 +278,65 @@ export default function NewListingPage() {
         </div>
       </div>
 
+      {/* Stepper */}
+      <nav aria-label="İlan oluşturma adımları" className="mb-8">
+        <ol className="flex items-center gap-2 sm:gap-4">
+          {stepLabels.map((label, i) => {
+            const stepNum = (i + 1) as 1 | 2 | 3;
+            const isActive = step === stepNum;
+            const isDone = step > stepNum;
+            return (
+              <li key={label} className="flex items-center gap-2 sm:gap-4 flex-1 last:flex-none">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Sadece geçilen adımlara geri izin; ileri adıma doğrulamayla.
+                    if (stepNum < step || (stepNum === 2 && step1Valid)) setStep(stepNum);
+                  }}
+                  disabled={stepNum > step && !(stepNum === 2 && step1Valid)}
+                  aria-current={isActive ? "step" : undefined}
+                  className={`flex items-center gap-2 ${stepNum <= step ? "cursor-pointer" : "cursor-not-allowed"}`}
+                >
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                      isActive
+                        ? "bg-indigo-600 text-white"
+                        : isDone
+                        ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
+                        : "bg-white/5 text-slate-400 border border-white/10"
+                    }`}
+                  >
+                    {isDone ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      stepNum
+                    )}
+                  </span>
+                  <span
+                    className={`text-xs sm:text-sm font-medium hidden sm:inline ${
+                      isActive ? "text-white" : isDone ? "text-emerald-400" : "text-slate-400"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </button>
+                {i < stepLabels.length - 1 && (
+                  <span className={`h-px flex-1 min-w-4 ${step > stepNum ? "bg-emerald-500/40" : "bg-white/10"}`} />
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+
       <div className="grid lg:grid-cols-2 gap-8">
         {/* Form */}
         <div>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {step === 1 && (
+            <>
             {/* ───── Temel Bilgiler ───── */}
             <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
               <CardHeader>
@@ -286,9 +351,9 @@ export default function NewListingPage() {
                 {/* Mülk Tipi & İlan Türü */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label className="text-slate-300">Mülk Tipi *</Label>
+                    <Label htmlFor="property-type" className="text-slate-300">Mülk Tipi *</Label>
                     <Select value={propertyType} onValueChange={(v) => setPropertyType(v ?? "")} required>
-                      <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                      <SelectTrigger id="property-type" className="bg-white/5 border-white/10 text-white">
                         <SelectValue placeholder="Mülk tipi seçin" />
                       </SelectTrigger>
                       <SelectContent className="bg-slate-900 border-white/10">
@@ -301,9 +366,9 @@ export default function NewListingPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-slate-300">İlan Türü *</Label>
+                    <Label htmlFor="ilan-turu" className="text-slate-300">İlan Türü *</Label>
                     <Select value={ilanTuru} onValueChange={(v) => setIlanTuru(v ?? "")} required>
-                      <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                      <SelectTrigger id="ilan-turu" className="bg-white/5 border-white/10 text-white">
                         <SelectValue placeholder="Satılık / Kiralık" />
                       </SelectTrigger>
                       <SelectContent className="bg-slate-900 border-white/10">
@@ -318,18 +383,19 @@ export default function NewListingPage() {
 
                 {/* Konum */}
                 <div>
-                  <Label className="text-slate-300 mb-2 block">Konum *</Label>
+                  <span className="text-slate-300 mb-2 block text-sm font-medium">Konum *</span>
                   <div className="grid grid-cols-3 gap-3">
-                    <Input placeholder="İl" value={il} onChange={(e) => setIl(e.target.value)} required className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
-                    <Input placeholder="İlçe" value={ilce} onChange={(e) => setIlce(e.target.value)} required className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
-                    <Input placeholder="Mahalle" value={mahalle} onChange={(e) => setMahalle(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                    <Input placeholder="İl" aria-label="İl" value={il} onChange={(e) => setIl(e.target.value)} required className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                    <Input placeholder="İlçe" aria-label="İlçe" value={ilce} onChange={(e) => setIlce(e.target.value)} required className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                    <Input placeholder="Mahalle" aria-label="Mahalle" value={mahalle} onChange={(e) => setMahalle(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                   </div>
                 </div>
 
                 {/* Fiyat */}
                 <div className="space-y-2">
-                  <Label className="text-slate-300">Fiyat (TL) *</Label>
+                  <Label htmlFor="price" className="text-slate-300">Fiyat (TL) *</Label>
                   <Input
+                    id="price"
                     type="text"
                     placeholder={ilanTuru === "Kiralık" || ilanTuru === "Devren Kiralık" ? "15.000 / ay" : "4.500.000"}
                     value={price}
@@ -341,6 +407,24 @@ export default function NewListingPage() {
               </CardContent>
             </Card>
 
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                onClick={() => setStep(2)}
+                disabled={!step1Valid}
+                className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white"
+              >
+                İleri
+                <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Button>
+            </div>
+            </>
+            )}
+
+            {step === 2 && (
+            <>
             {/* ───── Daire / Villa Detayları ───── */}
             {showDaireVilla && (
               <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
@@ -675,6 +759,34 @@ export default function NewListingPage() {
               </Card>
             )}
 
+            <div className="flex justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep(1)}
+                className="border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
+              >
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Geri
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setStep(3)}
+                className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white"
+              >
+                İleri
+                <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Button>
+            </div>
+            </>
+            )}
+
+            {step === 3 && (
+            <>
             {/* ───── Ek Notlar & İletişim ───── */}
             <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
               <CardHeader>
@@ -712,30 +824,46 @@ export default function NewListingPage() {
                 </div>
 
                 {/* Submit */}
-                <Button
-                  type="submit"
-                  className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-medium py-6 text-base shadow-lg shadow-indigo-500/20"
-                  disabled={loading || !propertyType || !ilanTuru || !il || !ilce || !price}
-                >
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      İlan metni oluşturuluyor...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      İlan Metni Oluştur
-                    </span>
-                  )}
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setStep(2)}
+                    disabled={loading}
+                    className="border-white/10 text-slate-300 hover:text-white hover:bg-white/5 sm:w-auto"
+                  >
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Geri
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-medium py-6 text-base shadow-lg shadow-indigo-500/20"
+                    disabled={loading || !propertyType || !ilanTuru || !il || !ilce || !price}
+                  >
+                    {loading ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        İlan metni oluşturuluyor...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        İlan Metni Oluştur
+                      </span>
+                    )}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
+            </>
+            )}
           </form>
         </div>
 

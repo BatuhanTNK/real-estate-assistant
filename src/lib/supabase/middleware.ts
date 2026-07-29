@@ -48,6 +48,9 @@ export async function updateSession(request: NextRequest) {
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth";
+    if (url.hostname === "localhost") {
+      url.protocol = "http:";
+    }
     return NextResponse.redirect(url);
   }
 
@@ -55,6 +58,9 @@ export async function updateSession(request: NextRequest) {
   if (user && request.nextUrl.pathname === "/auth") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
+    if (url.hostname === "localhost") {
+      url.protocol = "http:";
+    }
     return NextResponse.redirect(url);
   }
 

@@ -1,16 +1,17 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import type { Metadata } from "next";
+import { PlanCards } from "@/components/pricing/plan-cards";
 
 export const metadata: Metadata = {
   title: "Fiyatlandırma — İlan Asistanı",
-  description: "İlan Asistanı fiyatlandırma planları. Ücretsiz başlayın, ihtiyacınıza göre büyüyün.",
+  description:
+    "İlan Asistanı fiyatlandırma planları. Ücretsiz başlayın, ihtiyacınıza göre büyüyün.",
 };
 
 const plans = [
   {
+    id: "free" as const,
     name: "Ücretsiz",
     price: "₺0",
     period: "/ay",
@@ -29,6 +30,7 @@ const plans = [
     popular: false,
   },
   {
+    id: "individual" as const,
     name: "Bireysel",
     price: "₺129",
     period: "/ay",
@@ -47,6 +49,7 @@ const plans = [
     popular: true,
   },
   {
+    id: "team" as const,
     name: "Ofis",
     price: "₺449",
     period: "/ay",
@@ -77,7 +80,7 @@ const faqs = [
   },
   {
     q: "Ödeme güvenli mi?",
-    a: "Evet, tüm ödemeler iyzico altyapısı üzerinden güvenli bir şekilde işlenir. Kart bilgileriniz bizde saklanmaz.",
+    a: "Evet, tüm ödemeler iyzico altyapısı üzerinden 256-bit SSL şifreleme ile güvenli bir şekilde işlenir. Kart bilgileriniz bizde saklanmaz.",
   },
   {
     q: "İptal edebilir miyim?",
@@ -108,66 +111,8 @@ export default function PricingPage() {
           </p>
         </div>
 
-        {/* Plans */}
-        <div className="grid md:grid-cols-3 gap-6 mb-20">
-          {plans.map((plan) => (
-            <Card
-              key={plan.name}
-              className={`relative bg-white/5 border-white/10 backdrop-blur-sm hover:border-white/20 transition-all duration-300 ${
-                plan.popular
-                  ? "ring-2 ring-indigo-500/50 border-indigo-500/30 scale-[1.02]"
-                  : ""
-              }`}
-            >
-              {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-0 px-4">
-                    En Popüler
-                  </Badge>
-                </div>
-              )}
-              <CardHeader className="text-center pb-2 pt-8">
-                <CardTitle className="text-white text-lg mb-2">{plan.name}</CardTitle>
-                <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-4xl font-bold text-white">{plan.price}</span>
-                  <span className="text-slate-400">{plan.period}</span>
-                </div>
-                <p className="text-slate-400 text-sm mt-2">{plan.description}</p>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((feature) => (
-                    <li key={feature.text} className="flex items-start gap-2 text-sm">
-                      {feature.included ? (
-                        <svg className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        <svg className="w-5 h-5 text-slate-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      )}
-                      <span className={feature.included ? "text-slate-300" : "text-slate-500"}>
-                        {feature.text}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/auth" className="block">
-                  <Button
-                    className={`w-full font-medium ${
-                      plan.popular
-                        ? "bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white shadow-lg shadow-indigo-500/20"
-                        : "bg-white/10 text-white hover:bg-white/15"
-                    }`}
-                  >
-                    {plan.cta}
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {/* Dynamic Plan Cards with İyzico Integration */}
+        <PlanCards plans={plans} />
 
         {/* FAQs */}
         <div className="max-w-2xl mx-auto">

@@ -16,11 +16,6 @@ export const metadata: Metadata = {
     "Mülk bilgilerinizi girin, yapay zeka destekli İlan Asistanı ile saniyeler içinde 3 farklı tonda profesyonel emlak ilan metni oluşturun. Emlakçılar için otomatik ilan yazma aracı.",
   keywords:
     "emlak ilan metni yazma, otomatik ilan oluşturma, emlak ilan asistanı, yapay zeka ilan yazma, emlakçı araçları",
-  icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
-    apple: "/favicon.svg",
-  },
   openGraph: {
     title: "İlan Asistanı — Yapay Zeka ile Emlak İlan Metni Oluşturun",
     description:
@@ -37,9 +32,13 @@ export default function RootLayout({
   return (
     <html
       lang="tr"
+      suppressHydrationWarning
       className={`${inter.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans bg-slate-950 text-white">
+      <body
+        suppressHydrationWarning
+        className="min-h-full flex flex-col font-sans bg-slate-950 text-white"
+      >
         <Navbar />
         <main className="flex-1">{children}</main>
         <Footer />

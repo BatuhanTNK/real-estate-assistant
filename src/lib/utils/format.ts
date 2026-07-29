@@ -11,25 +11,28 @@ export function formatCurrency(amount: number): string {
 }
 
 /**
- * Tarih formatlaması (Türkçe)
+ * Tarih formatlaması (Türkçe) — deterministic
  */
 export function formatDate(date: string | Date): string {
-  return new Intl.DateTimeFormat("tr-TR", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }).format(new Date(date));
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "";
+  const months = [
+    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
+  ];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 /**
- * Kısa tarih formatlaması
+ * Kısa tarih formatlaması — deterministic (GG.AA.YYYY)
  */
 export function formatDateShort(date: string | Date): string {
-  return new Intl.DateTimeFormat("tr-TR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(date));
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "";
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
 }
 
 /**

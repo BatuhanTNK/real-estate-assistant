@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatDateShort, getPropertyTypeLabel } from "@/lib/utils/format";
+import { ListingsHistory } from "@/components/listing-results/listings-history";
 
 const FREE_PLAN_LIMIT = 5;
 
@@ -23,13 +23,42 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single();
 
-  // Geçmiş ilanlar
-  const { data: listings } = await supabase
+  // Geçmiş ilanlar (is_favorite kolonu henüz DB'de yoksa fallback)
+  let listings: Array<{
+    id: string;
+    property_type: string;
+    output_kisa: string | null;
+    created_at: string;
+    is_favorite?: boolean;
+  }> | null = null;
+
+  const { data: listingsWithFav, error: listingsError } = await supabase
     .from("listings")
-    .select("*")
+    .select("id, property_type, output_kisa, created_at, is_favorite")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(20);
+
+  if (listingsError) {
+    const { data: fallbackListings } = await supabase
+      .from("listings")
+      .select("id, property_type, output_kisa, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    listings = (fallbackListings || []).map((item) => ({ ...item, is_favorite: false }));
+  } else {
+    listings = listingsWithFav;
+  }
+
+  // Toplam ilan sayısı (sayfalama için)
+  const { count: totalCount } = await supabase
+    .from("listings")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id);
+
+  const total = totalCount ?? 0;
 
   const monthlyCount = profile?.monthly_listing_count || 0;
   const planLabel = profile?.plan === "free" ? "Ücretsiz" : profile?.plan === "individual" ? "Bireysel" : "Ofis";
@@ -46,14 +75,22 @@ export default async function DashboardPage() {
           </h1>
           <p className="text-slate-400 mt-1">İlan metinlerinizi yönetin</p>
         </div>
-        <Link href="/dashboard/new">
-          <Button className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white shadow-lg shadow-indigo-500/20">
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Yeni İlan Oluştur
-          </Button>
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard/instagram">
+            <Button variant="outline" className="border-indigo-500/30 text-indigo-300 hover:text-white hover:bg-indigo-500/10">
+              <span className="mr-1.5">📸</span>
+              Instagram Kartı
+            </Button>
+          </Link>
+          <Link href="/dashboard/new">
+            <Button className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white shadow-lg shadow-indigo-500/20">
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Yeni İlan Oluştur
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -107,7 +144,7 @@ export default async function DashboardPage() {
         <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
           <CardContent className="pt-6">
             <p className="text-slate-400 text-sm mb-2">Toplam İlan</p>
-            <span className="text-3xl font-bold text-white">{listings?.length || 0}</span>
+            <span className="text-3xl font-bold text-white">{total}</span>
           </CardContent>
         </Card>
 
@@ -128,6 +165,29 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Promo Banner for Instagram Feature */}
+      <Card className="bg-gradient-to-r from-indigo-950/60 via-purple-950/40 to-slate-950/60 border-indigo-500/20 backdrop-blur-sm mb-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+        <CardContent className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white border-0 text-[10px]">
+                YENİ ÖZELLİK
+              </Badge>
+              <span className="text-white font-semibold">Instagram İlan Kartı Oluşturucu</span>
+            </div>
+            <p className="text-slate-400 text-sm max-w-xl">
+              Fotoğrafınızı yükleyin, yapay zeka ile profesyonel emlakçı portresi üretelim! Mülk fotoğraflarınızla birleştirip indirilebilir Instagram Carousel slaytları hazırlayın.
+            </p>
+          </div>
+          <Link href="/dashboard/instagram" className="shrink-0">
+            <Button className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium">
+              📸 Kart Oluştur →
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
 
       {/* Listings History */}
       <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
@@ -150,40 +210,7 @@ export default async function DashboardPage() {
               </Link>
             </div>
           ) : (
-            <div className="space-y-3">
-              {listings.map((listing) => (
-                <div
-                  key={listing.id}
-                  className="flex items-center justify-between p-4 rounded-xl bg-white/3 hover:bg-white/5 transition-colors group"
-                >
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-10 h-10 bg-indigo-500/10 rounded-lg flex items-center justify-center shrink-0">
-                      <span className="text-indigo-400 text-sm font-medium">
-                        {getPropertyTypeLabel(listing.property_type).charAt(0)}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs border-white/10 text-slate-400">
-                          {getPropertyTypeLabel(listing.property_type)}
-                        </Badge>
-                        <span className="text-slate-500 text-xs">
-                          {formatDateShort(listing.created_at)}
-                        </span>
-                      </div>
-                      <p className="text-slate-300 text-sm mt-1 truncate">
-                        {listing.output_kisa || "İlan metni"}
-                      </p>
-                    </div>
-                  </div>
-                  <Link href={`/dashboard/listing/${listing.id}`}>
-                    <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                      Görüntüle →
-                    </Button>
-                  </Link>
-                </div>
-              ))}
-            </div>
+            <ListingsHistory initialListings={listings} totalCount={total} />
           )}
         </CardContent>
       </Card>

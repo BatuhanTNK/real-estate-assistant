@@ -1,29 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { generateWithGemini } from "@/lib/ai/gemini";
-import { buildUserPrompt } from "@/lib/ai/prompts";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { validateListingForm } from "@/lib/ai/validation";
+import { processListingGeneration } from "@/lib/ai/generate";
 
-const FREE_PLAN_LIMIT = 5;
+export const dynamic = "force-dynamic";
 
-// Simple in-memory rate limiting (per user, max 3 requests per minute)
-const rateLimitMap = new Map<string, number[]>();
-
-function checkRateLimit(userId: string): boolean {
-  const now = Date.now();
-  const windowMs = 60 * 1000; // 1 minute
-  const maxRequests = 3;
-
-  const timestamps = rateLimitMap.get(userId) || [];
-  const recentTimestamps = timestamps.filter((t) => now - t < windowMs);
-
-  if (recentTimestamps.length >= maxRequests) {
-    return false;
-  }
-
-  recentTimestamps.push(now);
-  rateLimitMap.set(userId, recentTimestamps);
-  return true;
-}
+const RATE_LIMIT_MAX = 3; // dk başına
+const RATE_LIMIT_WINDOW_SEC = 60;
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,124 +24,92 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Rate limit kontrolü
-    if (!checkRateLimit(user.id)) {
+    // ── 1) Sunucu tarafı form doğrulama (zod) ──
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
       return NextResponse.json(
-        { error: "Çok fazla istek gönderdiniz. Lütfen 1 dakika bekleyin." },
+        { error: "Geçersiz istek gövdesi" },
+        { status: 400 }
+      );
+    }
+
+    const validation = validateListingForm(rawBody);
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+    const formData = validation.data;
+
+    // ── 2) Kalıcı rate limiting (DB tablosu, service role) ──
+    const serviceClient = await createServiceClient();
+    const { data: rateOk, error: rateError } = await serviceClient.rpc(
+      "check_rate_limit",
+      {
+        p_user_id: user.id,
+        p_endpoint: "generate-listing",
+        p_max_requests: RATE_LIMIT_MAX,
+        p_window_seconds: RATE_LIMIT_WINDOW_SEC,
+      }
+    );
+
+    if (rateError) {
+      if (rateError.code !== "PGRST202") {
+        console.error("Rate limit RPC hatası:", rateError);
+        return NextResponse.json(
+          { error: "İstek işlenemedi, lütfen tekrar deneyin" },
+          { status: 500 }
+        );
+      }
+    } else if (!rateOk) {
+      return NextResponse.json(
+        {
+          error: "Çok fazla istek gönderdiniz. Lütfen 1 dakika bekleyin.",
+        },
         { status: 429 }
       );
     }
 
-    // Profil ve limit kontrolü
-    const { data: profile, error: profileError } = await supabase
+    // ── 3) Profil bilgi ──
+    const { data: profile } = await supabase
       .from("profiles")
-      .select("*")
+      .select("full_name, phone_number, office_name")
       .eq("id", user.id)
       .single();
 
-    if (profileError || !profile) {
+    if (!profile) {
       return NextResponse.json(
         { error: "Profil bulunamadı" },
         { status: 404 }
       );
     }
 
-    // Aylık sayaç sıfırlama kontrolü
-    const resetDate = new Date(profile.monthly_count_reset_at);
-    const now = new Date();
-    let currentCount = profile.monthly_listing_count;
-
-    if (
-      resetDate.getMonth() !== now.getMonth() ||
-      resetDate.getFullYear() !== now.getFullYear()
-    ) {
-      // Yeni ay, sayacı sıfırla
-      await supabase
-        .from("profiles")
-        .update({
-          monthly_listing_count: 0,
-          monthly_count_reset_at: now.toISOString(),
-        })
-        .eq("id", user.id);
-      currentCount = 0;
-    }
-
-    // Ücretsiz plan limit kontrolü
-    if (profile.plan === "free" && currentCount >= FREE_PLAN_LIMIT) {
-      return NextResponse.json(
-        {
-          error: "Aylık ücretsiz ilan limitinize ulaştınız. Devam etmek için planınızı yükseltin.",
-          limitReached: true,
-        },
-        { status: 403 }
-      );
-    }
-
-    // Form verisini al
-    const formData = await request.json();
-
-    // Kullanıcı promptunu oluştur
-    const userPrompt = buildUserPrompt({
-      ...formData,
-      contactName: profile.full_name,
-      contactPhone: formData.contactPhone || profile.phone_number,
-      officeName: profile.office_name,
+    // ── 4) Çekirdek üretim (kota → prompt → Gemini → DB) ──
+    const outcome = await processListingGeneration({
+      userId: user.id,
+      formData,
+      profile,
+      supabase,
+      serviceClient,
     });
 
-    // Gemini API çağrısı
-    const result = await generateWithGemini(userPrompt);
-
-    // Veritabanına kaydet
-    const propertyTypeMap: Record<string, string> = {
-      Daire: "daire",
-      Villa: "villa",
-      Arsa: "arsa",
-      İşyeri: "isyeri",
-      Diğer: "diger",
-    };
-
-    const { data: listing, error: listingError } = await supabase
-      .from("listings")
-      .insert({
-        user_id: user.id,
-        property_type: propertyTypeMap[formData.propertyType] || "diger",
-        input_data: formData,
-        output_resmi: result.resmi,
-        output_samimi: result.samimi,
-        output_kisa: result.kisa,
-      })
-      .select()
-      .single();
-
-    if (listingError) {
-      console.error("Listing kayıt hatası:", listingError);
-      return NextResponse.json(
-        { error: "İlan kaydedilirken bir hata oluştu" },
-        { status: 500 }
-      );
+    if (!outcome.ok) {
+      const body: Record<string, unknown> = { error: outcome.error };
+      if (outcome.limitReached) body.limitReached = true;
+      return NextResponse.json(body, { status: outcome.status });
     }
-
-    // Aylık sayacı artır
-    await supabase
-      .from("profiles")
-      .update({
-        monthly_listing_count: currentCount + 1,
-      })
-      .eq("id", user.id);
 
     return NextResponse.json({
       success: true,
-      listing,
-      result,
-      remainingCount: FREE_PLAN_LIMIT - (currentCount + 1),
+      listing: outcome.listing,
+      result: outcome.result,
+      remainingCount: outcome.remainingCount,
+      plan: outcome.plan,
     });
   } catch (error) {
     console.error("Generate listing error:", error);
     const message =
       error instanceof Error ? error.message : "Bir şeyler ters gitti";
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

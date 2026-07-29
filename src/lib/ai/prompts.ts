@@ -1,3 +1,5 @@
+import type { ListingFormData } from "./validation";
+
 export const SYSTEM_PROMPT = `Sen Türkiye emlak piyasasında uzman bir ilan metni yazarısın. Sana verilen mülk bilgilerinden, ilgi çekici ve profesyonel emlak ilan metinleri üretiyorsun.
 
 KURALLAR:
@@ -17,51 +19,6 @@ KURALLAR:
 Yalnızca istenen JSON formatında yanıt ver, başka hiçbir açıklama ekleme, markdown kod bloğu kullanma:
 {"resmi": "...", "samimi": "...", "kisa": "..."}`;
 
-interface ListingFormData {
-  propertyType: string;
-  ilanTuru?: string;
-  location: {
-    il: string;
-    ilce: string;
-    mahalle: string;
-  };
-  price: string;
-  notes?: string;
-  contactName?: string;
-  contactPhone?: string;
-  officeName?: string;
-  // Ortak durum bilgileri
-  yapıDurumu?: string;
-  cepheYonu?: string;
-  esyaDurumu?: string;
-  krediyeUygun?: string;
-  takasaAcik?: string;
-  siteIcinde?: string;
-  yakinCevre?: string[];
-  // Daire/Villa
-  metpirlareNet?: string;
-  metrekareBrut?: string;
-  odaSayisi?: string;
-  banyoSayisi?: string;
-  bulunduguKat?: string;
-  katSayisi?: string;
-  binaYasi?: string;
-  isitmaTipi?: string;
-  aidat?: string;
-  ozellikler?: string[];
-  // Arsa
-  alan?: string;
-  imarDurumu?: string;
-  cepheBilgisi?: string;
-  altyapi?: string[];
-  tapuDurumu?: string;
-  // İşyeri
-  metrekare?: string;
-  katPlaza?: string;
-  kiraSatis?: string;
-  duzen?: string;
-}
-
 export function buildUserPrompt(data: ListingFormData): string {
   let prompt = `Aşağıdaki mülk bilgilerinden 3 farklı tonda ilan metni üret:
 
@@ -74,7 +31,8 @@ Mülk Tipi: ${data.propertyType}
 
   // Mülk tipine göre dinamik alanlar
   if (data.propertyType === "Daire" || data.propertyType === "Villa") {
-    if (data.metpirlareNet) prompt += `Net Metrekare: ${data.metpirlareNet} m²\n`;
+    const netM2 = data.metrekareNet ?? data.metpirlareNet;
+    if (netM2) prompt += `Net Metrekare: ${netM2} m²\n`;
     if (data.metrekareBrut) prompt += `Brüt Metrekare: ${data.metrekareBrut} m²\n`;
     if (data.odaSayisi) prompt += `Oda Sayısı: ${data.odaSayisi}\n`;
     if (data.banyoSayisi) prompt += `Banyo Sayısı: ${data.banyoSayisi}\n`;

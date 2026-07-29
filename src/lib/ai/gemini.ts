@@ -62,7 +62,7 @@ export async function generateWithGemini(
     }
 
     return parsed;
-  } catch (parseError) {
+  } catch {
     console.error("JSON parse hatası:", cleanedText);
     throw new Error("AI yanıtı beklenen formatta değil, lütfen tekrar deneyin");
   }

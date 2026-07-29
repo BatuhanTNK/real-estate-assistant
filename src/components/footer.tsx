@@ -38,19 +38,19 @@ export function Footer() {
             <h4 className="text-white font-semibold text-sm mb-4">Destek</h4>
             <ul className="space-y-2">
               <li>
-                <span className="text-slate-400 text-sm cursor-pointer hover:text-white transition-colors">
+                <Link href="/legal/contact" className="text-slate-400 hover:text-white transition-colors text-sm">
                   İletişim
-                </span>
+                </Link>
               </li>
               <li>
-                <span className="text-slate-400 text-sm cursor-pointer hover:text-white transition-colors">
+                <Link href="/legal/privacy" className="text-slate-400 hover:text-white transition-colors text-sm">
                   Gizlilik Politikası
-                </span>
+                </Link>
               </li>
               <li>
-                <span className="text-slate-400 text-sm cursor-pointer hover:text-white transition-colors">
+                <Link href="/legal/terms" className="text-slate-400 hover:text-white transition-colors text-sm">
                   Kullanım Şartları
-                </span>
+                </Link>
               </li>
             </ul>
           </div>
