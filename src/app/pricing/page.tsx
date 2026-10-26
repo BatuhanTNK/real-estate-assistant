@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Metadata } from "next";
 import { PlanCards } from "@/components/pricing/plan-cards";
+import { isTestCheckoutEnabled } from "@/lib/checkout-mode";
 
 export const metadata: Metadata = {
   title: "Fiyatlandırma — İlan Asistanı",
@@ -112,7 +113,7 @@ export default function PricingPage() {
         </div>
 
         {/* Dynamic Plan Cards with İyzico Integration */}
-        <PlanCards plans={plans} />
+        <PlanCards plans={plans} testCheckoutEnabled={isTestCheckoutEnabled()} />
 
         {/* FAQs */}
         <div className="max-w-2xl mx-auto">

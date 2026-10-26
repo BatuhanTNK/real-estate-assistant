@@ -1,14 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { Toaster } from "@/components/ui/sonner";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "İlan Asistanı — Yapay Zeka ile Emlak İlan Metni Oluşturun",
@@ -30,17 +24,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="tr"
-      suppressHydrationWarning
-      className={`${inter.variable} h-full antialiased`}
-    >
+    <html lang="tr" suppressHydrationWarning className="dark h-full antialiased">
       <body
         suppressHydrationWarning
         className="min-h-full flex flex-col font-sans bg-slate-950 text-white"
       >
+        <a href="#main-content" className="skip-link">Ana içeriğe geç</a>
         <Navbar />
-        <main className="flex-1">{children}</main>
+        <main id="main-content" tabIndex={-1} className="flex-1">{children}</main>
         <Footer />
         <Toaster richColors position="top-center" />
       </body>

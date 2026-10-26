@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
 import { CreditCardModal } from "@/components/pricing/credit-card-modal";
 
 interface PlanItem {
@@ -19,7 +18,7 @@ interface PlanItem {
   popular?: boolean;
 }
 
-export function PlanCards({ plans }: { plans: PlanItem[] }) {
+export function PlanCards({ plans, testCheckoutEnabled = false }: { plans: PlanItem[]; testCheckoutEnabled?: boolean }) {
   const router = useRouter();
   const [selectedPlanForCard, setSelectedPlanForCard] = useState<PlanItem | null>(null);
 
@@ -38,7 +37,7 @@ export function PlanCards({ plans }: { plans: PlanItem[] }) {
         {plans.map((plan) => (
           <Card
             key={plan.name}
-            className={`relative bg-white/5 border-white/10 backdrop-blur-sm hover:border-white/20 transition-all duration-300 ${
+            className={`relative overflow-visible bg-white/5 border-white/10 backdrop-blur-sm hover:border-white/20 transition-all duration-300 ${
               plan.popular
                 ? "ring-2 ring-indigo-500/50 border-indigo-500/30 scale-[1.02]"
                 : ""
@@ -129,6 +128,7 @@ export function PlanCards({ plans }: { plans: PlanItem[] }) {
       {selectedPlanForCard && selectedPlanForCard.id !== "free" && (
         <CreditCardModal
           isOpen={!!selectedPlanForCard}
+          testCheckoutEnabled={testCheckoutEnabled}
           onClose={() => setSelectedPlanForCard(null)}
           plan={{
             id: selectedPlanForCard.id as "individual" | "team",

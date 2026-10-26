@@ -115,16 +115,11 @@ export async function POST(request: NextRequest) {
         if (err || result.status !== "success" || !result.checkoutFormContent) {
           console.error("iyzico checkout init hatası:", err || result.errorMessage);
 
-          // İyzico Sandbox anahtarları geçersizse veya test modundaysa test ödeme simülasyonu sağla
+          // Provider failures must never be reported as successful payments.
           resolve(
             NextResponse.json({
-              success: true,
-              isTestMode: true,
-              plan: selectedPlanKey,
-              planName: planConfig.name,
-              price: planConfig.price,
-              message: "Test ödeme simülasyonu aktif.",
-            })
+              error: "Ödeme hizmetine şu anda ulaşılamıyor. Lütfen daha sonra tekrar deneyin.",
+            }, { status: 502 })
           );
           return;
         }

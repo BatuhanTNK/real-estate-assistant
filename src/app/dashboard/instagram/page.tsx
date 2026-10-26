@@ -10,12 +10,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import type { ListingFormData } from "@/lib/ai/validation";
 import { InstagramCarouselPreview } from "@/components/instagram/instagram-carousel-preview";
+import { LiveSlidePreview } from "@/components/instagram/live-slide-preview";
 import {
   renderCoverSlide,
   renderPropertySlide,
   SlideTheme,
   AspectRatio,
+  CoverLayoutType,
 } from "@/lib/utils/canvas-renderer";
 import {
   ArrowLeft,
@@ -33,6 +36,8 @@ import {
   Hash,
   MoveLeft,
   MoveRight,
+  Tag,
+  Wand2,
 } from "lucide-react";
 
 const PORTRAIT_STYLES = [
@@ -77,6 +82,17 @@ const THEME_OPTIONS: { value: SlideTheme; label: string; desc: string; emoji: st
   },
 ];
 
+const QUICK_ROOM_TAGS = [
+  "Salon & Oturma Alanı",
+  "Açık Mutfak",
+  "Ebeveyn Yatak Odası",
+  "Geniş Teras & Manzara",
+  "Lüks Banyo & Jakuzi",
+  "Dış Cephe & Bahçe",
+  "Özel Havuz",
+  "Giyinme Odası",
+];
+
 interface Profile {
   plan: string;
   full_name: string | null;
@@ -85,10 +101,28 @@ interface Profile {
   phone_number: string | null;
 }
 
+interface SavedListing {
+  id: string;
+  property_type: string;
+  input_data: Partial<Omit<ListingFormData, "location">> & { location?: Partial<ListingFormData["location"]> | string; arsaAlani?: string };
+  output_kisa: string | null;
+  output_samimi: string | null;
+  output_resmi: string | null;
+  created_at: string;
+}
+
+interface PropertyPhotoItem {
+  id: string;
+  url: string;
+  tag: string;
+}
+
 export default function InstagramPage() {
   const router = useRouter();
   const supabase = createClient();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const coverPhotoInputRef = useRef<HTMLInputElement>(null);
   const propertyFileRef = useRef<HTMLInputElement>(null);
 
   // Genel durum
@@ -96,11 +130,17 @@ export default function InstagramPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Kayıtlı ilanlar
+  const [savedListings, setSavedListings] = useState<SavedListing[]>([]);
+  const [selectedListingId, setSelectedListingId] = useState<string>("");
+
   // Tasarım ve Format Seçimleri
+  const [layoutType, setLayoutType] = useState<CoverLayoutType>("property_focused");
   const [theme, setTheme] = useState<SlideTheme>("modern_dark");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("4:5");
 
-  // Adım 1 — Portre
+  // Adım 1 — Kapak & Portre
+  const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
   const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
   const [selfieBase64, setSelfieBase64] = useState<string | null>(null);
   const [selfieType, setSelfieType] = useState<string>("image/jpeg");
@@ -114,18 +154,19 @@ export default function InstagramPage() {
   const [area, setArea] = useState("");
   const [rooms, setRooms] = useState("");
   const [floor, setFloor] = useState("");
-  const [badgeText, setBadgeText] = useState("SATILIK İLAN");
+  const [badgeText, setBadgeText] = useState("SATILIK LÜKS KONUT");
   const [captionText, setCaptionText] = useState("");
+  const [generatingCaption, setGeneratingCaption] = useState(false);
 
   // Adım 3 — Mülk fotoğrafları
-  const [propertyPhotos, setPropertyPhotos] = useState<string[]>([]);
+  const [propertyPhotos, setPropertyPhotos] = useState<PropertyPhotoItem[]>([]);
 
   // Adım 4 — Çıktı
   const [slideBlobs, setSlideBlobs] = useState<Blob[]>([]);
   const [slideUrls, setSlideUrls] = useState<string[]>([]);
   const [rendering, setRendering] = useState(false);
 
-  // Profil yükleme
+  // Profil ve Geçmiş İlanları yükleme
   useEffect(() => {
     const load = async () => {
       const {
@@ -136,40 +177,155 @@ export default function InstagramPage() {
         return;
       }
 
-      const { data } = await supabase
+      // Profil
+      const { data: profData } = await supabase
         .from("profiles")
         .select("plan, full_name, office_name, logo_url, phone_number")
         .eq("id", user.id)
         .single();
 
-      if (data) setProfile(data as Profile);
+      if (profData) setProfile(profData as Profile);
+
+      // Geçmiş ilanlar (son 25 ilan)
+      const { data: listData } = await supabase
+        .from("listings")
+        .select("id, property_type, input_data, output_kisa, output_samimi, output_resmi, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(25);
+
+      if (listData) {
+        setSavedListings(listData as SavedListing[]);
+      }
+
       setLoading(false);
     };
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Kayıtlı ilandan bilgileri otomatik doldurma
+  const handleSelectSavedListing = (listingId: string) => {
+    setSelectedListingId(listingId);
+    if (!listingId) return;
+
+    const listing = savedListings.find((l) => l.id === listingId);
+    if (!listing) return;
+
+    const input = listing.input_data || {};
+
+    if (input.price) setPrice(input.price);
+
+    // Konum çözümleme
+    if (input.location) {
+      if (typeof input.location === "string") {
+        setLocation(input.location);
+      } else if (typeof input.location === "object") {
+        const parts = [
+          input.location.mahalle,
+          input.location.ilce,
+          input.location.il,
+        ].filter(Boolean);
+        setLocation(parts.join(", "));
+      }
+    }
+
+    // Metrekare
+    const m2 = input.metrekareNet || input.metrekareBrut || input.arsaAlani;
+    if (m2) {
+      setArea(String(m2).includes("m²") ? String(m2) : `${m2} m²`);
+    }
+
+    if (input.odaSayisi) setRooms(input.odaSayisi);
+    if (input.bulunduguKat) setFloor(input.bulunduguKat);
+
+    // Rozet metni
+    const ilanTuru = input.ilanTuru || "SATILIK";
+    const propType = input.propertyType || listing.property_type || "KONUT";
+    setBadgeText(`${ilanTuru.toUpperCase()} ${propType.toUpperCase()}`);
+
+    // Açıklama metni
+    const caption =
+      listing.output_kisa ||
+      listing.output_samimi ||
+      listing.output_resmi ||
+      "";
+    if (caption) setCaptionText(caption);
+
+    toast.success("İlan bilgileri başarıyla aktarıldı! 🚀");
+  };
+
   // Demo verilerle hızlı doldurma
   const handleLoadDemoData = () => {
-    const samplePortrait = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'><rect width='400' height='400' fill='%231e293b'/><circle cx='200' cy='150' r='70' fill='%236366f1'/><path d='M80 350 C80 250 320 250 320 350 Z' fill='%234f46e5'/><text x='200' y='380' text-anchor='middle' fill='white' font-family='sans-serif' font-size='20'>Örnek Emlakçı Portresi</text></svg>";
-    const sampleHouse = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'><rect width='800' height='600' fill='%230f172a'/><polygon points='400,100 150,300 650,300' fill='%23e11d48'/><rect x='200' y='300' width='400' height='250' fill='%23f8fafc'/><rect x='340' y='400' width='120' height='150' fill='%23334155'/><rect x='240' y='350' width='80' height='80' fill='%2338bdf8'/><rect x='480' y='350' width='80' height='80' fill='%2338bdf8'/><text x='400' y='580' text-anchor='middle' fill='%2394a3b8' font-family='sans-serif' font-size='24'>Lüks Villa Fotoğrafı</text></svg>";
+    const samplePortrait =
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'><rect width='400' height='400' fill='%231e293b'/><circle cx='200' cy='150' r='70' fill='%236366f1'/><path d='M80 350 C80 250 320 250 320 350 Z' fill='%234f46e5'/><text x='200' y='380' text-anchor='middle' fill='white' font-family='sans-serif' font-size='20'>Örnek Emlakçı Portresi</text></svg>";
+    const sampleHouse =
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'><rect width='800' height='600' fill='%230f172a'/><polygon points='400,100 150,300 650,300' fill='%23e11d48'/><rect x='200' y='300' width='400' height='250' fill='%23f8fafc'/><rect x='340' y='400' width='120' height='150' fill='%23334155'/><rect x='240' y='350' width='80' height='80' fill='%2338bdf8'/><rect x='480' y='350' width='80' height='80' fill='%2338bdf8'/><text x='400' y='580' text-anchor='middle' fill='%2394a3b8' font-family='sans-serif' font-size='24'>Lüks Villa Fotoğrafı</text></svg>";
+    const sampleInterior =
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'><rect width='800' height='600' fill='%231e1b4b'/><rect x='100' y='350' width='600' height='180' fill='%234338ca' rx='20'/><text x='400' y='300' text-anchor='middle' fill='white' font-family='sans-serif' font-size='28'>Geniş Salon & Yemek Odası</text></svg>";
 
+    setLayoutType("property_focused");
+    setCoverPhoto(sampleHouse);
     setSelfiePreview(samplePortrait);
     setPortraitPreview(samplePortrait);
-    setPrice("₺14.500.000");
+    setPrice("₺18.750.000");
     setLocation("Bodrum, Muğla");
-    setArea("320 m²");
+    setArea("360 m²");
     setRooms("4+1");
-    setFloor("Müstakil");
+    setFloor("Müstakil Villa");
     setBadgeText("SATILIK LÜKS VİLLA");
-    setCaptionText("Lüks Bodrum villamız satıştadır! Özel yüzme havuzlu, geniş bahçeli ve büyüleyici deniz manzaralı. Detaylı bilgi ve randevu için DM atabilir veya arayabilirsiniz.");
-    setPropertyPhotos([sampleHouse]);
+    setCaptionText(
+      "✨ Bodrum Yalıkavak'ta Büyüleyici Deniz Manzaralı Müstakil Lüks Villa!\n\n" +
+        "📍 Konum: Bodrum, Muğla\n" +
+        "💰 Fiyat: ₺18.750.000\n" +
+        "📐 Alan: 360 m² (4+1)\n" +
+        "🏊‍♂️ Özel Sonsuzluk Havuzu & Geniş Peyzajlı Bahçe\n\n" +
+        "Detaylı bilgi ve randevu için DM atabilir veya bize ulaşabilirsiniz.\n\n" +
+        "#bodrumvilla #satılıkvilla #lükskonut #gayrimenkul #yalıkavak #realestate"
+    );
+    setPropertyPhotos([
+      { id: "1", url: sampleHouse, tag: "Dış Cephe & Havuz" },
+      { id: "2", url: sampleInterior, tag: "Geniş Salon" },
+    ]);
     toast.success("Örnek test verileri yüklendi!");
+  };
+
+  // AI ile Instagram Gönderi Metni Üretimi
+  const handleGenerateAiCaption = async () => {
+    setGeneratingCaption(true);
+    try {
+      const res = await fetch("/api/generate-instagram-caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          price: price || "Belirtilmedi",
+          location: location || "Belirtilmedi",
+          area: area || "",
+          rooms: rooms || "",
+          floor: floor || "",
+          badgeText: badgeText || "Satılık İlan",
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Açıklama üretilemedi");
+        return;
+      }
+
+      setCaptionText(data.caption);
+      toast.success("AI ile Instagram açıklaması oluşturuldu! ✨");
+    } catch {
+      toast.error("Bağlantı hatası, tekrar deneyin");
+    } finally {
+      setGeneratingCaption(false);
+    }
   };
 
   // Hashtag ekleme
   const handleAddHashtags = () => {
-    const tags = "\n\n#emlak #satılıkkonut #gayrimenkul #emlakdanışmanı #lükskonut #satılıkvilla #yatırım #realestate #realtor #emlakdünyası";
+    const tags =
+      "\n\n#emlak #satılıkkonut #gayrimenkul #emlakdanışmanı #lükskonut #satılıkvilla #yatırım #realestate #realtor #emlakdünyası";
     if (!captionText.includes("#emlak")) {
       setCaptionText((prev) => prev + tags);
       toast.success("Popüler Instagram etiketleri eklendi! 🏷️");
@@ -178,7 +334,26 @@ export default function InstagramPage() {
     }
   };
 
-  // Fotoğraf seçimi & resize
+  // Kapak Mülk Fotoğrafı seçimi
+  const handleCoverPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Lütfen bir görsel dosyası seçin");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCoverPhoto(reader.result as string);
+      toast.success("Kapak mülk fotoğrafı yüklendi!");
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  // Selfie / Portre fotoğraf seçimi & resize
   const handleSelfieSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -226,6 +401,7 @@ export default function InstagramPage() {
         img.src = dataUrl;
       };
       reader.readAsDataURL(file);
+      e.target.value = "";
     },
     []
   );
@@ -256,11 +432,13 @@ export default function InstagramPage() {
       const dataUrl = `data:${data.portrait.mimeType};base64,${data.portrait.imageBase64}`;
       setPortraitPreview(dataUrl);
       if (data.portrait.isFallback) {
-        toast.info(data.portrait.fallbackReason || "Fotoğrafınız portre kartı için hazırlandı.");
+        toast.info(
+          data.portrait.fallbackReason ||
+            "Fotoğrafınız portre kartı için hazırlandı."
+        );
       } else {
         toast.success("Profesyonel portre oluşturuldu! 🎉");
       }
-      setStep(2);
     } catch {
       toast.error("Bağlantı hatası, tekrar deneyin");
     } finally {
@@ -307,7 +485,18 @@ export default function InstagramPage() {
             const ctx = canvas.getContext("2d")!;
             ctx.drawImage(img, 0, 0, w, h);
             const resized = canvas.toDataURL("image/jpeg", 0.9);
-            setPropertyPhotos((prev) => [...prev, resized]);
+
+            setPropertyPhotos((prev) => [
+              ...prev,
+              {
+                id: Math.random().toString(36).substring(2, 9),
+                url: resized,
+                tag: "",
+              },
+            ]);
+
+            // Eğer henüz kapak fotoğrafı seçilmemişse ilk fotoğrafı kapak yap
+            setCoverPhoto((currentCover) => currentCover || resized);
           };
           img.src = reader.result as string;
         };
@@ -321,6 +510,16 @@ export default function InstagramPage() {
 
   const removePropertyPhoto = (index: number) => {
     setPropertyPhotos((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updatePhotoTag = (index: number, newTag: string) => {
+    setPropertyPhotos((prev) => {
+      const copy = [...prev];
+      if (copy[index]) {
+        copy[index] = { ...copy[index], tag: newTag };
+      }
+      return copy;
+    });
   };
 
   const movePhotoLeft = (index: number) => {
@@ -345,17 +544,31 @@ export default function InstagramPage() {
     });
   };
 
-  // Slaytları render et
+  // Slaytları render et (Adım 4)
   const handleRenderSlides = useCallback(async () => {
-    if (!portraitPreview) return;
+    const mainCoverSrc =
+      layoutType === "agent_focused"
+        ? portraitPreview
+        : coverPhoto || propertyPhotos[0]?.url || portraitPreview;
+
+    if (!mainCoverSrc) {
+      toast.error("Kapak slaytı için en az bir görsel yüklenmelidir.");
+      return;
+    }
 
     setRendering(true);
     try {
       const blobs: Blob[] = [];
 
-      // Kapak slaytı
+      // 1. Kapak slaytı
       const coverBlob = await renderCoverSlide({
-        portraitSrc: portraitPreview,
+        layoutType,
+        coverImageSrc: mainCoverSrc,
+        portraitSrc: portraitPreview || undefined,
+        avatarSrc:
+          layoutType === "property_focused"
+            ? portraitPreview || undefined
+            : undefined,
         theme,
         aspectRatio,
         overlay: {
@@ -368,14 +581,16 @@ export default function InstagramPage() {
           agentName: profile?.full_name || "Emlak Danışmanı",
           officeName: profile?.office_name || undefined,
           logoUrl: profile?.logo_url || undefined,
+          phone: profile?.phone_number || undefined,
         },
       });
       blobs.push(coverBlob);
 
-      // Mülk slaytları
-      for (const photo of propertyPhotos) {
+      // 2. Mülk slaytları
+      for (const photoItem of propertyPhotos) {
         const propBlob = await renderPropertySlide({
-          photoSrc: photo,
+          photoSrc: photoItem.url,
+          tag: photoItem.tag || undefined,
           theme,
           aspectRatio,
           brand: {
@@ -391,7 +606,7 @@ export default function InstagramPage() {
 
       setSlideBlobs(blobs);
       setSlideUrls(urls);
-      toast.success(`${blobs.length} slayt başarıyla oluşturuldu!`);
+      toast.success(`${blobs.length} slayt başarıyla oluşturuldu! 🎉`);
     } catch (err) {
       console.error("Render error:", err);
       toast.error("Slaytlar oluşturulurken hata oluştu");
@@ -399,17 +614,19 @@ export default function InstagramPage() {
       setRendering(false);
     }
   }, [
+    layoutType,
+    coverPhoto,
+    propertyPhotos,
     portraitPreview,
+    theme,
+    aspectRatio,
     price,
     location,
     area,
     rooms,
     floor,
     badgeText,
-    theme,
-    aspectRatio,
     profile,
-    propertyPhotos,
     slideUrls,
   ]);
 
@@ -423,7 +640,9 @@ export default function InstagramPage() {
 
       slideBlobs.forEach((blob, i) => {
         const name =
-          i === 0 ? "01_kapak_portre.png" : `${String(i + 1).padStart(2, "0")}_mulk_foto.png`;
+          i === 0
+            ? "01_kapak_slayti.png"
+            : `${String(i + 1).padStart(2, "0")}_mulk_foto.png`;
         zip.file(name, blob);
       });
 
@@ -434,7 +653,7 @@ export default function InstagramPage() {
       a.download = "instagram_ilan_karti.zip";
       a.click();
       URL.revokeObjectURL(url);
-      toast.success("ZIP dosyası indirildi!");
+      toast.success("Tüm slaytlar ZIP olarak indirildi!");
     } catch {
       toast.error("İndirme başarısız");
     }
@@ -455,7 +674,7 @@ export default function InstagramPage() {
     return (
       <div className="flex items-center justify-center py-20">
         <svg
-          className="w-8 h-8 text-slate-500 animate-spin"
+          className="w-8 h-8 text-indigo-500 animate-spin"
           fill="none"
           viewBox="0 0 24 24"
         >
@@ -502,30 +721,44 @@ export default function InstagramPage() {
     );
   }
 
-  const canProceedStep1 = !!portraitPreview;
-  const canProceedStep2 = !!price && !!location && !!captionText;
+  // Geçerlilik kontrolleri
+  const canProceedStep1 =
+    layoutType === "minimal_corporate"
+      ? true
+      : layoutType === "property_focused"
+      ? true
+      : !!portraitPreview;
+
+  const canProceedStep2 = !!price && !!location;
   const canProceedStep3 = propertyPhotos.length >= 1;
 
+  // Canlı önizleme için seçili kapak görseli
+  const currentLiveCoverImage =
+    layoutType === "agent_focused"
+      ? portraitPreview
+      : coverPhoto || propertyPhotos[0]?.url || portraitPreview;
+
   return (
-    <div>
+    <div className="max-w-7xl mx-auto pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 mb-8">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
           <Button
             variant="ghost"
+            size="sm"
             onClick={() => router.push("/dashboard")}
             className="text-slate-400 hover:text-white hover:bg-white/5"
           >
-            <ArrowLeft className="w-5 h-5 mr-1" />
+            <ArrowLeft className="w-4 h-4 mr-1" />
             Geri
           </Button>
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
               <Camera className="w-6 h-6 text-indigo-400" />
-              Instagram İlan Kartı
+              Instagram İlan Kartı Tasarımcısı
             </h1>
-            <p className="text-slate-400 text-sm mt-1">
-              AI portre + mülk fotoğrafları ile lüks carousel postlar tasarlayın
+            <p className="text-slate-400 text-xs sm:text-sm mt-0.5">
+              Çoklu kapak modelleri, AI destekli portre ve mülk carousel postları
             </p>
           </div>
         </div>
@@ -534,44 +767,46 @@ export default function InstagramPage() {
           variant="outline"
           size="sm"
           onClick={handleLoadDemoData}
-          className="border-indigo-500/30 text-indigo-300 hover:text-white hover:bg-indigo-500/10 text-xs shrink-0"
+          className="border-indigo-500/30 text-indigo-300 hover:text-white hover:bg-indigo-500/10 text-xs shrink-0 self-start sm:self-auto"
         >
-          <Sparkles className="w-3.5 h-3.5 mr-1 text-indigo-400" />
+          <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
           ✨ Örnek Verilerle Dene
         </Button>
       </div>
 
-      {/* Adım göstergesi */}
-      <div className="flex items-center gap-2 mb-8">
+      {/* Adım Göstergesi (Stepper) */}
+      <div className="flex items-center gap-1.5 sm:gap-3 mb-8 overflow-x-auto pb-2">
         {[
-          { n: 1, label: "Portre" },
-          { n: 2, label: "Bilgiler & Tema" },
-          { n: 3, label: "Fotoğraflar" },
-          { n: 4, label: "Önizleme" },
+          { n: 1, label: "Kapak & Portre" },
+          { n: 2, label: "Bilgiler & Metin" },
+          { n: 3, label: "Mülk Fotoğrafları" },
+          { n: 4, label: "Önizleme & İndir" },
         ].map(({ n, label }) => (
-          <div key={n} className="flex items-center gap-2">
+          <div key={n} className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => {
                 if (n < step) setStep(n);
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
                 n === step
-                  ? "bg-indigo-500 text-white"
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
                   : n < step
                   ? "bg-emerald-500/20 text-emerald-400 cursor-pointer hover:bg-emerald-500/30"
                   : "bg-white/5 text-slate-500 cursor-default"
               }`}
             >
               {n < step ? (
-                <CheckCircle2 className="w-3.5 h-3.5" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
               ) : (
-                <span>{n}</span>
+                <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[10px]">
+                  {n}
+                </span>
               )}
-              <span className="hidden sm:inline">{label}</span>
+              <span>{label}</span>
             </button>
             {n < 4 && (
               <div
-                className={`w-6 h-px ${
+                className={`w-4 sm:w-8 h-px ${
                   n < step ? "bg-emerald-500/40" : "bg-white/10"
                 }`}
               />
@@ -580,104 +815,755 @@ export default function InstagramPage() {
         ))}
       </div>
 
-      {/* ================================== */}
-      {/* ADIM 1 — Portre Yükleme & AI Üretimi */}
-      {/* ================================== */}
-      {step === 1 && (
-        <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="text-white text-lg flex items-center gap-2">
-              <Camera className="w-5 h-5 text-indigo-400" />
-              Adım 1: Fotoğrafınızı Yükleyin & AI Portre Oluşturun
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div>
-              <Label className="text-slate-300 mb-2 block">
-                Kendi Fotoğrafınız (Selfie veya Profil Fotoğrafı)
-              </Label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={handleSelfieSelect}
-              />
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-white/10 hover:border-indigo-500/40 rounded-xl p-8 text-center cursor-pointer transition-colors group"
-              >
-                {selfiePreview ? (
-                  <div className="flex items-center justify-center gap-6">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={selfiePreview}
-                      alt="Yüklenen fotoğraf"
-                      className="w-32 h-32 object-cover rounded-xl border border-white/10"
-                    />
-                    <div className="text-left">
-                      <p className="text-emerald-400 text-sm font-medium flex items-center gap-1">
-                        <CheckCircle2 className="w-4 h-4" />
-                        Fotoğraf yüklendi
-                      </p>
-                      <p className="text-slate-500 text-xs mt-1">
-                        Değiştirmek için tıklayın
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <Upload className="w-10 h-10 text-slate-500 mx-auto mb-3 group-hover:text-indigo-400 transition-colors" />
-                    <p className="text-slate-300 font-medium">
-                      Fotoğrafınızı sürükleyin veya tıklayın
-                    </p>
-                    <p className="text-slate-500 text-sm mt-1">
-                      JPEG, PNG veya WebP • Maks 4MB
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {selfiePreview && (
-              <div>
-                <Label className="text-slate-300 mb-3 block">
-                  AI Portre Stili Seçin
-                </Label>
-                <div className="grid grid-cols-3 gap-3">
-                  {PORTRAIT_STYLES.map((style) => (
+      {/* İki Sütunlu Çalışma Alanı (Grid) */}
+      <div className="grid lg:grid-cols-12 gap-8 items-start">
+        {/* Sol Sütun: Form & Kontroller */}
+        <div className="lg:col-span-7 space-y-6">
+          {/* ================================== */}
+          {/* ADIM 1 — Kapak Modeli & Portre     */}
+          {/* ================================== */}
+          {step === 1 && (
+            <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-white text-lg flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-indigo-400" />
+                  Adım 1: Kapak Modeli & Portre Seçimi
+                </CardTitle>
+                <p className="text-slate-400 text-xs">
+                  Carousel gönderinizin 1. slaytı (kapak) için en uygun tasarım
+                  modelini seçin.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Kapak Modeli Seçici (3 Kart) */}
+                <div>
+                  <Label className="text-slate-300 mb-2.5 block text-xs font-semibold uppercase tracking-wider">
+                    Kapak Tasarım Modeli
+                  </Label>
+                  <div className="grid sm:grid-cols-3 gap-3">
                     <button
-                      key={style.value}
-                      onClick={() => setSelectedStyle(style.value)}
-                      className={`p-4 rounded-xl border text-center transition-all ${
-                        selectedStyle === style.value
-                          ? "bg-indigo-500/10 border-indigo-500/40 text-white"
-                          : "bg-white/3 border-white/10 text-slate-400 hover:border-white/20"
+                      onClick={() => setLayoutType("property_focused")}
+                      className={`p-3.5 rounded-xl border text-left transition-all relative ${
+                        layoutType === "property_focused"
+                          ? "bg-indigo-500/15 border-indigo-500 text-white ring-1 ring-indigo-500"
+                          : "bg-white/3 border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300"
                       }`}
                     >
-                      <span className="text-2xl block mb-1">{style.emoji}</span>
-                      <span className="text-sm font-medium block">
-                        {style.label}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xl">🌟</span>
+                        <span className="text-[10px] bg-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded font-medium">
+                          Önerilen
+                        </span>
+                      </div>
+                      <div className="text-sm font-bold text-white mb-1">
+                        Mülk Odaklı
+                      </div>
+                      <div className="text-[11px] text-slate-400 leading-snug">
+                        Kapakta mülk fotoğrafı + köşede danışman rozeti
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => setLayoutType("agent_focused")}
+                      className={`p-3.5 rounded-xl border text-left transition-all ${
+                        layoutType === "agent_focused"
+                          ? "bg-indigo-500/15 border-indigo-500 text-white ring-1 ring-indigo-500"
+                          : "bg-white/3 border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300"
+                      }`}
+                    >
+                      <span className="text-xl block mb-2">👔</span>
+                      <div className="text-sm font-bold text-white mb-1">
+                        Danışman Odaklı
+                      </div>
+                      <div className="text-[11px] text-slate-400 leading-snug">
+                        Tam boy profesyonel stüdyo portresi arka planda
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => setLayoutType("minimal_corporate")}
+                      className={`p-3.5 rounded-xl border text-left transition-all ${
+                        layoutType === "minimal_corporate"
+                          ? "bg-indigo-500/15 border-indigo-500 text-white ring-1 ring-indigo-500"
+                          : "bg-white/3 border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300"
+                      }`}
+                    >
+                      <span className="text-xl block mb-2">🏢</span>
+                      <div className="text-sm font-bold text-white mb-1">
+                        Minimal Kurumsal
+                      </div>
+                      <div className="text-[11px] text-slate-400 leading-snug">
+                        Portresiz; sadece mülk görseli ve ofis logosu
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Eğer Mülk Odaklı veya Minimal ise Kapak Mülk Fotoğrafı */}
+                {layoutType !== "agent_focused" && (
+                  <div>
+                    <Label className="text-slate-300 mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wider">
+                      <span>Kapak Mülk Fotoğrafı</span>
+                      <span className="text-slate-400 text-[11px] font-normal normal-case">
+                        (Boş bırakırsanız 3. adımdaki ilk fotoğraf kullanılır)
                       </span>
-                      <span className="text-xs text-slate-500 block mt-0.5">
-                        {style.desc}
+                    </Label>
+                    <input
+                      ref={coverPhotoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleCoverPhotoSelect}
+                    />
+                    <div
+                      onClick={() => coverPhotoInputRef.current?.click()}
+                      className="border-2 border-dashed border-white/10 hover:border-indigo-500/40 rounded-xl p-5 text-center cursor-pointer transition-colors group bg-white/2"
+                    >
+                      {coverPhoto ? (
+                        <div className="flex items-center justify-center gap-4">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={coverPhoto}
+                            alt="Kapak Fotoğrafı"
+                            className="w-24 h-24 object-cover rounded-lg border border-white/10"
+                          />
+                          <div className="text-left">
+                            <p className="text-emerald-400 text-xs font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Kapak mülk görseli seçildi
+                            </p>
+                            <p className="text-slate-500 text-[11px] mt-1">
+                              Görseli değiştirmek için tıklayın
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="py-2">
+                          <ImagePlus className="w-8 h-8 text-slate-500 mx-auto mb-2 group-hover:text-indigo-400 transition-colors" />
+                          <p className="text-slate-300 text-xs font-medium">
+                            Kapak için özel bir fotoğraf seçin veya tıklayın
+                          </p>
+                          <p className="text-slate-500 text-[11px] mt-0.5">
+                            JPEG, PNG veya WebP
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Danışman Portresi / Avatarı (Minimal hariç) */}
+                {layoutType !== "minimal_corporate" && (
+                  <div className="border-t border-white/5 pt-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-slate-300 text-xs font-semibold uppercase tracking-wider">
+                        {layoutType === "property_focused"
+                          ? "Emlakçı Avatar Portresi (Dairesel Rozet)"
+                          : "Emlakçı Arka Plan Portresi"}
+                      </Label>
+                      {portraitPreview && (
+                        <span className="text-emerald-400 text-xs font-medium flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Hazır
+                        </span>
+                      )}
+                    </div>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleSelfieSelect}
+                    />
+
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-white/10 hover:border-indigo-500/40 rounded-xl p-5 text-center cursor-pointer transition-colors group bg-white/2"
+                    >
+                      {portraitPreview ? (
+                        <div className="flex items-center justify-center gap-4">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={portraitPreview}
+                            alt="Portre Fotoğrafı"
+                            className="w-20 h-20 object-cover rounded-full border-2 border-indigo-500 shadow-md"
+                          />
+                          <div className="text-left">
+                            <p className="text-white text-xs font-semibold">
+                              Portre yüklendi
+                            </p>
+                            <p className="text-slate-400 text-[11px] mt-0.5">
+                              Değiştirmek için tıklayın
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="py-2">
+                          <Upload className="w-8 h-8 text-slate-500 mx-auto mb-2 group-hover:text-indigo-400 transition-colors" />
+                          <p className="text-slate-300 text-xs font-medium">
+                            Kendi fotoğrafınızı yükleyin (Selfie veya Vesikalık)
+                          </p>
+                          <p className="text-slate-500 text-[11px] mt-0.5">
+                            Maks 4MB • Orijinal olarak kullanılabilir veya AI ile
+                            dönüştürülebilir
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* AI Portre Üretim Opsiyonu */}
+                    {selfiePreview && (
+                      <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
+                            <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+                            İsteğe Bağlı: AI ile Profesyonel Stüdyo Portresine
+                            Dönüştür
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          {PORTRAIT_STYLES.map((style) => (
+                            <button
+                              key={style.value}
+                              onClick={() => setSelectedStyle(style.value)}
+                              className={`p-2.5 rounded-lg border text-center transition-all text-xs ${
+                                selectedStyle === style.value
+                                  ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
+                                  : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                              }`}
+                            >
+                              <span className="text-base block mb-0.5">
+                                {style.emoji}
+                              </span>
+                              <span className="block font-semibold">
+                                {style.label}
+                              </span>
+                              <span className="text-[10px] text-slate-500 block truncate">
+                                {style.desc}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+
+                        <Button
+                          onClick={handleGeneratePortrait}
+                          disabled={generatingPortrait || !selfieBase64}
+                          size="sm"
+                          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs"
+                        >
+                          {generatingPortrait ? (
+                            <>
+                              <svg
+                                className="w-4 h-4 animate-spin mr-2"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                />
+                              </svg>
+                              AI Portre Oluşturuluyor...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-4 h-4 mr-1.5" />
+                              Yapay Zeka ile Stüdyo Portresi Üret
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Adım 1 İlerleme */}
+                <div className="flex justify-end pt-2">
+                  <Button
+                    onClick={() => setStep(2)}
+                    disabled={!canProceedStep1}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-9 px-4"
+                  >
+                    Devam Et (Bilgiler)
+                    <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ================================== */}
+          {/* ADIM 2 — Mülk Bilgileri & Metin    */}
+          {/* ================================== */}
+          {step === 2 && (
+            <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-white text-lg flex items-center gap-2">
+                      <Palette className="w-5 h-5 text-indigo-400" />
+                      Adım 2: Mülk Bilgileri, Tema & Açıklama
+                    </CardTitle>
+                    <p className="text-slate-400 text-xs mt-0.5">
+                      Slaytta görünecek fiyat, konum detayları ve Instagram
+                      metnini girin.
+                    </p>
+                  </div>
+
+                  {/* Kayıtlı İlandan Doldur Dropdown */}
+                  {savedListings.length > 0 && (
+                    <div className="shrink-0">
+                      <select
+                        aria-label="Kayıtlı İlanlarımdan Getir"
+                        value={selectedListingId}
+                        onChange={(e) => handleSelectSavedListing(e.target.value)}
+                        className="bg-indigo-950/60 border border-indigo-500/30 text-indigo-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="">📋 Kayıtlı İlandan Doldur...</option>
+                        {savedListings.map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.input_data?.price || "İlan"} —{" "}
+                            {(typeof l.input_data?.location === "object" ? l.input_data.location?.ilce : l.input_data?.location) || l.property_type}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {/* Tasarım Teması & Boyut Seçimi */}
+                <div className="grid sm:grid-cols-2 gap-4 p-3.5 bg-white/3 border border-white/10 rounded-xl">
+                  <div>
+                    <Label className="text-slate-300 mb-2 flex items-center gap-1.5 text-xs font-semibold">
+                      <Palette className="w-3.5 h-3.5 text-indigo-400" />
+                      Tasarım Teması
+                    </Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {THEME_OPTIONS.map((t) => (
+                        <button
+                          key={t.value}
+                          onClick={() => setTheme(t.value)}
+                          className={`p-2 rounded-lg border text-center transition-all text-xs ${
+                            theme === t.value
+                              ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
+                              : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <span className="block text-base mb-0.5">
+                            {t.emoji}
+                          </span>
+                          <span className="block font-semibold">{t.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-slate-300 mb-2 flex items-center gap-1.5 text-xs font-semibold">
+                      📏 Slayt Formatı
+                    </Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setAspectRatio("4:5")}
+                        className={`p-2 rounded-lg border text-center transition-all text-xs ${
+                          aspectRatio === "4:5"
+                            ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
+                            : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        <span className="block text-xs font-bold mb-0.5">
+                          4:5 Dikey
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          1080×1350 (Önerilen)
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => setAspectRatio("1:1")}
+                        className={`p-2 rounded-lg border text-center transition-all text-xs ${
+                          aspectRatio === "1:1"
+                            ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
+                            : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        <span className="block text-xs font-bold mb-0.5">
+                          1:1 Kare
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          1080×1080 (Klasik)
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Girişleri */}
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ig-price" className="text-slate-300 text-xs">
+                      Fiyat *
+                    </Label>
+                    <Input
+                      id="ig-price"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      placeholder="₺4.850.000"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 text-sm h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="ig-location"
+                      className="text-slate-300 text-xs"
+                    >
+                      Konum *
+                    </Label>
+                    <Input
+                      id="ig-location"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="Kadıköy, İstanbul"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 text-sm h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ig-area" className="text-slate-300 text-xs">
+                      Alan (m²)
+                    </Label>
+                    <Input
+                      id="ig-area"
+                      value={area}
+                      onChange={(e) => setArea(e.target.value)}
+                      placeholder="145 m²"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 text-sm h-9"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ig-rooms" className="text-slate-300 text-xs">
+                      Oda Sayısı
+                    </Label>
+                    <Input
+                      id="ig-rooms"
+                      value={rooms}
+                      onChange={(e) => setRooms(e.target.value)}
+                      placeholder="3+1"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 text-sm h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ig-floor" className="text-slate-300 text-xs">
+                      Kat Bilgisi
+                    </Label>
+                    <Input
+                      id="ig-floor"
+                      value={floor}
+                      onChange={(e) => setFloor(e.target.value)}
+                      placeholder="4. Kat"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 text-sm h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ig-badge" className="text-slate-300 text-xs">
+                      Rozet Etiketi
+                    </Label>
+                    <Input
+                      id="ig-badge"
+                      value={badgeText}
+                      onChange={(e) => setBadgeText(e.target.value)}
+                      placeholder="SATILIK LÜKS DAİRE"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 text-sm h-9"
+                    />
+                  </div>
+                </div>
+
+                {/* Instagram Açıklama (Caption) */}
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label
+                      htmlFor="ig-caption"
+                      className="text-slate-300 text-xs"
+                    >
+                      Instagram Açıklama Metni (Caption)
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleGenerateAiCaption}
+                        disabled={generatingCaption || !price}
+                        className="h-7 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 px-2.5 border border-indigo-500/20"
+                      >
+                        {generatingCaption ? (
+                          <>
+                            <svg
+                              className="w-3 h-3 animate-spin mr-1.5"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                            Metin Yazılıyor...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5 mr-1 text-indigo-400" />
+                            AI ile Metin Üret
+                          </>
+                        )}
+                      </Button>
+
+                      <button
+                        type="button"
+                        onClick={handleAddHashtags}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors px-2 py-1"
+                      >
+                        <Hash className="w-3 h-3" />
+                        Hashtag Ekle
+                      </button>
+                    </div>
+                  </div>
+                  <Textarea
+                    id="ig-caption"
+                    value={captionText}
+                    onChange={(e) => setCaptionText(e.target.value)}
+                    placeholder="Gönderi açıklamanızı buraya yazın veya yukarıdaki 'AI ile Metin Üret' butonunu kullanın..."
+                    rows={5}
+                    className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 resize-y text-xs sm:text-sm leading-relaxed"
+                  />
+                </div>
+
+                <div className="flex justify-between pt-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setStep(1)}
+                    className="text-slate-400 hover:text-white text-xs h-9"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-1.5" />
+                    Geri
+                  </Button>
+                  <Button
+                    onClick={() => setStep(3)}
+                    disabled={!canProceedStep2}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-9 px-4"
+                  >
+                    Devam Et (Fotoğraflar)
+                    <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ================================== */}
+          {/* ADIM 3 — Mülk Fotoğrafları & Etiket*/}
+          {/* ================================== */}
+          {step === 3 && (
+            <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-white text-lg flex items-center gap-2">
+                      <ImagePlus className="w-5 h-5 text-emerald-400" />
+                      Adım 3: Mülk Fotoğrafları & Oda Etiketleri
+                    </CardTitle>
+                    <p className="text-slate-400 text-xs mt-0.5">
+                      İç ve dış mekan fotoğraflarını yükleyin. Dilerseniz her
+                      fotoğrafa oda etiketi ekleyin.
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="text-xs border-white/10 text-slate-400 shrink-0"
+                  >
+                    {propertyPhotos.length} / 9 fotoğraf
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <input
+                  ref={propertyFileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={handlePropertyPhotos}
+                />
+
+                {/* Fotoğraf Listesi & Etiket Düzenleyici */}
+                <div className="space-y-3">
+                  {propertyPhotos.map((item, i) => (
+                    <div
+                      key={item.id}
+                      className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 bg-white/3 border border-white/10 rounded-xl"
+                    >
+                      {/* Küçük Önizleme */}
+                      <div className="relative w-20 h-20 shrink-0 rounded-lg overflow-hidden border border-white/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.url}
+                          alt={`Mülk Fotoğrafı ${i + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-1 left-1">
+                          <span className="bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                            {i + 2}. Slayt
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Etiket Seçici / Girişi */}
+                      <div className="flex-1 w-full space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-300 font-medium flex items-center gap-1">
+                            <Tag className="w-3 h-3 text-indigo-400" />
+                            Slayt Oda Etiketi (Opsiyonel)
+                          </span>
+                        </div>
+                        <Input
+                          value={item.tag}
+                          onChange={(e) => updatePhotoTag(i, e.target.value)}
+                          placeholder="Örn: Geniş Salon, Açık Mutfak, Teras..."
+                          className="bg-white/5 border-white/10 text-white text-xs h-8 placeholder:text-slate-500"
+                        />
+                        {/* Hızlı Çipler */}
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {QUICK_ROOM_TAGS.slice(0, 5).map((quickTag) => (
+                            <button
+                              key={quickTag}
+                              type="button"
+                              onClick={() => updatePhotoTag(i, quickTag)}
+                              className="text-[10px] px-2 py-0.5 rounded bg-white/5 hover:bg-indigo-500/20 hover:text-indigo-300 text-slate-400 border border-white/5 transition-colors"
+                            >
+                              + {quickTag}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Eylem Butonları */}
+                      <div className="flex items-center gap-1 self-end sm:self-center">
+                        {i > 0 && (
+                          <button
+                            onClick={() => movePhotoLeft(i)}
+                            className="w-7 h-7 rounded-lg bg-white/5 text-slate-300 flex items-center justify-center hover:bg-white/10 hover:text-white"
+                            title="Yukarı/Sola taşı"
+                          >
+                            <MoveLeft className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {i < propertyPhotos.length - 1 && (
+                          <button
+                            onClick={() => movePhotoRight(i)}
+                            className="w-7 h-7 rounded-lg bg-white/5 text-slate-300 flex items-center justify-center hover:bg-white/10 hover:text-white"
+                            title="Aşağı/Sağa taşı"
+                          >
+                            <MoveRight className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => removePropertyPhoto(i)}
+                          className="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center hover:bg-rose-500/20"
+                          title="Sil"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Fotoğraf Ekleme Kutusu */}
+                  {propertyPhotos.length < 9 && (
+                    <button
+                      onClick={() => propertyFileRef.current?.click()}
+                      className="w-full border-2 border-dashed border-white/10 hover:border-indigo-500/40 rounded-xl p-4 flex items-center justify-center gap-2 text-slate-400 hover:text-indigo-400 transition-colors bg-white/2"
+                    >
+                      <ImagePlus className="w-5 h-5" />
+                      <span className="text-xs font-medium">
+                        Yeni Mülk Fotoğrafı Yükle ({9 - propertyPhotos.length}{" "}
+                        kaldı)
                       </span>
                     </button>
-                  ))}
+                  )}
                 </div>
-              </div>
-            )}
 
-            {selfiePreview && (
-              <Button
-                onClick={handleGeneratePortrait}
-                disabled={generatingPortrait || !selfieBase64}
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white h-12 text-base"
-              >
-                {generatingPortrait ? (
-                  <>
+                <div className="flex justify-between pt-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setStep(2)}
+                    className="text-slate-400 hover:text-white text-xs h-9"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-1.5" />
+                    Geri
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      setStep(4);
+                      setTimeout(() => {
+                        handleRenderSlides();
+                      }, 250);
+                    }}
+                    disabled={!canProceedStep3}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-9 px-4"
+                  >
+                    Slaytları Oluştur & Önizle
+                    <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ================================== */}
+          {/* ADIM 4 — Önizleme & İndirme        */}
+          {/* ================================== */}
+          {step === 4 && (
+            <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-lg flex items-center gap-2">
+                    📱 Adım 4: Carousel Önizleme & İndirme
+                  </CardTitle>
+                  {slideBlobs.length > 0 && (
+                    <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+                      {slideBlobs.length} slayt hazır ({aspectRatio})
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {rendering ? (
+                  <div className="flex flex-col items-center justify-center py-16">
                     <svg
-                      className="w-5 h-5 animate-spin mr-2"
+                      className="w-10 h-10 text-indigo-400 animate-spin mb-4"
                       fill="none"
                       viewBox="0 0 24 24"
                     >
@@ -695,474 +1581,132 @@ export default function InstagramPage() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                       />
                     </svg>
-                    AI Portre Oluşturuluyor...
-                  </>
+                    <p className="text-white font-medium text-sm">
+                      Yüksek çözünürlüklü slaytlar oluşturuluyor...
+                    </p>
+                    <p className="text-slate-500 text-xs mt-1">
+                      Tuval grafikleri ve tipografi işleniyor
+                    </p>
+                  </div>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5 mr-2" />
-                    Profesyonel AI Portre Oluştur & Devam Et
+                    <InstagramCarouselPreview
+                      slides={slideUrls}
+                      caption={captionText}
+                      aspectRatio={aspectRatio}
+                    />
+
+                    {slideBlobs.length > 0 && (
+                      <div className="space-y-4 pt-2">
+                        {/* Ana İndirme Butonu */}
+                        <div className="flex justify-center">
+                          <Button
+                            onClick={handleDownloadZip}
+                            className="bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white h-11 px-8 shadow-lg shadow-emerald-950/30 text-sm font-semibold"
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Tüm Slaytları İndir (ZIP)
+                          </Button>
+                        </div>
+
+                        {/* Tekil İndirmeler */}
+                        <div>
+                          <span className="text-slate-400 text-xs font-semibold block mb-2 text-center uppercase tracking-wider">
+                            Tek Tek Slayt İndir
+                          </span>
+                          <div className="flex flex-wrap gap-2 justify-center">
+                            {slideBlobs.map((_, i) => (
+                              <Button
+                                key={i}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDownloadSingle(i)}
+                                className="border-white/10 text-slate-300 hover:text-white hover:bg-white/5 text-xs"
+                              >
+                                <Download className="w-3 h-3 mr-1" />
+                                {i === 0 ? "Kapak" : `Slayt ${i + 1}`}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
-              </Button>
-            )}
 
-            {portraitPreview && (
-              <div className="mt-4 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl">
-                <p className="text-emerald-400 text-sm font-medium mb-3 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Portreniz Kapak Kartı İçin Hazır!
-                </p>
-                <div className="flex items-start gap-4">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={portraitPreview}
-                    alt="AI Portre"
-                    className="w-48 h-48 object-cover rounded-xl border border-emerald-500/20"
-                  />
-                  <div className="space-y-2 pt-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleGeneratePortrait}
-                      disabled={generatingPortrait}
-                      className="text-slate-400 hover:text-white text-sm"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-                      Tekrar Üret
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end pt-2">
-              <Button
-                onClick={() => setStep(2)}
-                disabled={!canProceedStep1}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white"
-              >
-                Devam Et
-                <ArrowRight className="w-4 h-4 ml-1.5" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ================================== */}
-      {/* ADIM 2 — Mülk Bilgileri, Tema & Format */}
-      {/* ================================== */}
-      {step === 2 && (
-        <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="text-white text-lg flex items-center gap-2">
-              🎨 Adım 2: Mülk Bilgileri, Tasarım Teması & Metin
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Tasarım Teması & Boyut Seçimi */}
-            <div className="grid sm:grid-cols-2 gap-4 p-4 bg-white/3 border border-white/10 rounded-xl">
-              <div>
-                <Label className="text-slate-300 mb-2 flex items-center gap-1.5 text-sm font-semibold">
-                  <Palette className="w-4 h-4 text-indigo-400" />
-                  Tasarım Teması
-                </Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {THEME_OPTIONS.map((t) => (
-                    <button
-                      key={t.value}
-                      onClick={() => setTheme(t.value)}
-                      className={`p-2.5 rounded-lg border text-center transition-all text-xs ${
-                        theme === t.value
-                          ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
-                          : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      <span className="block text-lg mb-0.5">{t.emoji}</span>
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-slate-300 mb-2 flex items-center gap-1.5 text-sm font-semibold">
-                  📏 Slayt Boyutu (Format)
-                </Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setAspectRatio("4:5")}
-                    className={`p-2.5 rounded-lg border text-center transition-all text-xs ${
-                      aspectRatio === "4:5"
-                        ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
-                        : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-                    }`}
+                <div className="flex justify-between pt-4 border-t border-white/5">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setStep(3)}
+                    className="text-slate-400 hover:text-white text-xs h-9"
                   >
-                    <span className="block text-sm font-bold mb-0.5">4:5 Dikey</span>
-                    1080×1350 (Varsayılan)
-                  </button>
-
-                  <button
-                    onClick={() => setAspectRatio("1:1")}
-                    className={`p-2.5 rounded-lg border text-center transition-all text-xs ${
-                      aspectRatio === "1:1"
-                        ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
-                        : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-                    }`}
+                    <ArrowLeft className="w-4 h-4 mr-1.5" />
+                    Fotoğrafları Düzenle
+                  </Button>
+                  <Button
+                    onClick={handleRenderSlides}
+                    disabled={rendering}
+                    variant="ghost"
+                    className="text-indigo-400 hover:text-indigo-300 text-xs h-9"
                   >
-                    <span className="block text-sm font-bold mb-0.5">1:1 Kare</span>
-                    1080×1080 (Klasik)
-                  </button>
+                    <RotateCcw className="w-4 h-4 mr-1.5" />
+                    Tekrar Oluştur
+                  </Button>
                 </div>
-              </div>
-            </div>
-
-            {/* Form Girişleri */}
-            <div className="grid sm:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="ig-price" className="text-slate-300">
-                  Fiyat *
-                </Label>
-                <Input
-                  id="ig-price"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="₺4.850.000"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ig-location" className="text-slate-300">
-                  Konum *
-                </Label>
-                <Input
-                  id="ig-location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Kadıköy, İstanbul"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ig-area" className="text-slate-300">
-                  Alan (m²)
-                </Label>
-                <Input
-                  id="ig-area"
-                  value={area}
-                  onChange={(e) => setArea(e.target.value)}
-                  placeholder="145 m²"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500"
-                />
-              </div>
-            </div>
-
-            <div className="grid sm:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="ig-rooms" className="text-slate-300">
-                  Oda Sayısı
-                </Label>
-                <Input
-                  id="ig-rooms"
-                  value={rooms}
-                  onChange={(e) => setRooms(e.target.value)}
-                  placeholder="3+1"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ig-floor" className="text-slate-300">
-                  Kat Bilgisi
-                </Label>
-                <Input
-                  id="ig-floor"
-                  value={floor}
-                  onChange={(e) => setFloor(e.target.value)}
-                  placeholder="4. Kat"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ig-badge" className="text-slate-300">
-                  Rozet Etiketi
-                </Label>
-                <Input
-                  id="ig-badge"
-                  value={badgeText}
-                  onChange={(e) => setBadgeText(e.target.value)}
-                  placeholder="SATILIK LÜKS DAİRE"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="ig-caption" className="text-slate-300">
-                  Instagram Açıklama Metni (Caption) *
-                </Label>
-                <button
-                  onClick={handleAddHashtags}
-                  className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors"
-                >
-                  <Hash className="w-3.5 h-3.5" />
-                  Hashtag Ekle
-                </button>
-              </div>
-              <Textarea
-                id="ig-caption"
-                value={captionText}
-                onChange={(e) => setCaptionText(e.target.value)}
-                placeholder="İlan metninizi buraya yapıştırın veya yazın..."
-                rows={6}
-                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 resize-y"
-              />
-            </div>
-
-            <div className="flex justify-between pt-2">
-              <Button
-                variant="ghost"
-                onClick={() => setStep(1)}
-                className="text-slate-400 hover:text-white"
-              >
-                <ArrowLeft className="w-4 h-4 mr-1.5" />
-                Geri
-              </Button>
-              <Button
-                onClick={() => setStep(3)}
-                disabled={!canProceedStep2}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white"
-              >
-                Devam Et
-                <ArrowRight className="w-4 h-4 ml-1.5" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ================================== */}
-      {/* ADIM 3 — Mülk Fotoğrafları & Sıralama */}
-      {/* ================================== */}
-      {step === 3 && (
-        <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-white text-lg flex items-center gap-2">
-                <ImagePlus className="w-5 h-5 text-emerald-400" />
-                Adım 3: Mülk Fotoğrafları (En fazla 9 adet)
-              </CardTitle>
-              <Badge
-                variant="outline"
-                className="text-xs border-white/10 text-slate-400"
-              >
-                {propertyPhotos.length} / 9 fotoğraf
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <p className="text-slate-400 text-sm">
-              Ev, villa veya iş yeri fotoğraflarını yükleyin. Fotoğrafların
-              sırasını değiştirmek için yön oklarını kullanabilirsiniz.
-            </p>
-
-            <input
-              ref={propertyFileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              className="hidden"
-              onChange={handlePropertyPhotos}
-            />
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {propertyPhotos.map((photo, i) => (
-                <div key={i} className="relative group aspect-square">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photo}
-                    alt={`Mülk ${i + 1}`}
-                    className="w-full h-full object-cover rounded-xl border border-white/10"
-                  />
-                  <div className="absolute top-1.5 left-1.5">
-                    <Badge className="bg-black/70 text-white text-[10px] border-0">
-                      {i + 2}. slayt
-                    </Badge>
-                  </div>
-
-                  {/* Sıralama & Silme Butonları */}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center gap-1.5">
-                    {i > 0 && (
-                      <button
-                        onClick={() => movePhotoLeft(i)}
-                        className="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/40"
-                        title="Sola taşı"
-                      >
-                        <MoveLeft className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => removePropertyPhoto(i)}
-                      className="w-7 h-7 rounded-full bg-red-500/80 text-white flex items-center justify-center hover:bg-red-600"
-                      title="Sil"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                    {i < propertyPhotos.length - 1 && (
-                      <button
-                        onClick={() => movePhotoRight(i)}
-                        className="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/40"
-                        title="Sağa taşı"
-                      >
-                        <MoveRight className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {propertyPhotos.length < 9 && (
-                <button
-                  onClick={() => propertyFileRef.current?.click()}
-                  className="aspect-square border-2 border-dashed border-white/10 hover:border-indigo-500/40 rounded-xl flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-indigo-400 transition-colors"
-                >
-                  <ImagePlus className="w-6 h-6" />
-                  <span className="text-xs">Fotoğraf Ekle</span>
-                </button>
-              )}
-            </div>
-
-            <div className="flex justify-between pt-2">
-              <Button
-                variant="ghost"
-                onClick={() => setStep(2)}
-                className="text-slate-400 hover:text-white"
-              >
-                <ArrowLeft className="w-4 h-4 mr-1.5" />
-                Geri
-              </Button>
-              <Button
-                onClick={async () => {
-                  setStep(4);
-                  setTimeout(() => {
-                    handleRenderSlides();
-                  }, 300);
-                }}
-                disabled={!canProceedStep3}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white"
-              >
-                Slaytları Oluştur & Önizle
-                <ArrowRight className="w-4 h-4 ml-1.5" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ================================== */}
-      {/* ADIM 4 — Önizleme & İndirme */}
-      {/* ================================== */}
-      {step === 4 && (
-        <div className="space-y-6">
-          <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-white text-lg flex items-center gap-2">
-                  📱 Adım 4: Önizleme & İndirme
-                </CardTitle>
-                {slideBlobs.length > 0 && (
-                  <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                    {slideBlobs.length} slayt hazır ({aspectRatio})
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {rendering ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <svg
-                    className="w-10 h-10 text-indigo-400 animate-spin mb-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  <p className="text-white font-medium">
-                    Slaytlar oluşturuluyor...
-                  </p>
-                  <p className="text-slate-500 text-sm mt-1">
-                    Yüksek kalitede tuval işleniyor
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <InstagramCarouselPreview
-                    slides={slideUrls}
-                    caption={captionText}
-                  />
-
-                  {slideBlobs.length > 0 && (
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
-                      <Button
-                        onClick={handleDownloadZip}
-                        className="bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white h-11"
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Tümünü İndir (ZIP)
-                      </Button>
-
-                      {slideBlobs.map((_, i) => (
-                        <Button
-                          key={i}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownloadSingle(i)}
-                          className="border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
-                        >
-                          <Download className="w-3.5 h-3.5 mr-1.5" />
-                          Slayt {i + 1}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-
-              <div className="flex justify-between pt-2 border-t border-white/5">
-                <Button
-                  variant="ghost"
-                  onClick={() => setStep(3)}
-                  className="text-slate-400 hover:text-white"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-1.5" />
-                  Geri
-                </Button>
-                <Button
-                  onClick={handleRenderSlides}
-                  disabled={rendering}
-                  variant="ghost"
-                  className="text-indigo-400 hover:text-indigo-300"
-                >
-                  <RotateCcw className="w-4 h-4 mr-1.5" />
-                  Tekrar Oluştur
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
-      )}
+
+        {/* Sağ Sütun: Canlı Önizleme (Sticky Live Preview) */}
+        <div className="lg:col-span-5 lg:sticky lg:top-6 space-y-4">
+          {step < 4 ? (
+            <LiveSlidePreview
+              layoutType={layoutType}
+              theme={theme}
+              aspectRatio={aspectRatio}
+              coverImage={currentLiveCoverImage}
+              avatarImage={
+                layoutType === "property_focused"
+                  ? portraitPreview
+                  : null
+              }
+              price={price}
+              location={location}
+              area={area}
+              rooms={rooms}
+              floor={floor}
+              badgeText={badgeText}
+              agentName={profile?.full_name || "Emlak Danışmanı"}
+              officeName={profile?.office_name || undefined}
+              phoneNumber={profile?.phone_number || undefined}
+              logoUrl={profile?.logo_url || undefined}
+            />
+          ) : (
+            <div className="p-5 rounded-2xl bg-white/5 border border-white/10 text-center space-y-3">
+              <span className="text-2xl block">🎉</span>
+              <h3 className="text-white font-bold text-sm">
+                Tasarımınız Yayına Hazır!
+              </h3>
+              <p className="text-slate-400 text-xs leading-relaxed">
+                Sol taraftaki panelden slaytları tek tek veya toplu ZIP olarak
+                indirebilir, Instagram açıklama metnini panonuza kopyalayarak
+                paylaşabilirsiniz.
+              </p>
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStep(1)}
+                  className="border-white/10 text-slate-300 hover:text-white text-xs"
+                >
+                  Yeni Bir Tasarım Başlat
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

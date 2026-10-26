@@ -37,31 +37,53 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const isProtectedRoute = request.nextUrl.pathname.startsWith("/dashboard");
+  const isAuthRoute = request.nextUrl.pathname.startsWith("/auth");
 
-  // Protected routes - redirect to auth if not logged in
-  if (
-    !user &&
-    request.nextUrl.pathname.startsWith("/dashboard")
-  ) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/auth";
-    if (url.hostname === "localhost") {
-      url.protocol = "http:";
-    }
-    return NextResponse.redirect(url);
+  // If not protected or auth route, pass through quickly
+  if (!isProtectedRoute && !isAuthRoute) {
+    return supabaseResponse;
   }
 
-  // If logged in user tries to access auth page, redirect to dashboard
-  if (user && request.nextUrl.pathname === "/auth") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    if (url.hostname === "localhost") {
-      url.protocol = "http:";
+  try {
+    const getUserPromise = supabase.auth.getUser();
+    const timeoutPromise = new Promise<{ data: { user: null } }>((resolve) =>
+      setTimeout(() => resolve({ data: { user: null } }), 2500)
+    );
+
+    const {
+      data: { user },
+    } = await Promise.race([getUserPromise, timeoutPromise]);
+
+    // Protected routes - redirect to auth if not logged in
+    if (!user && isProtectedRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth";
+      if (url.hostname === "localhost") {
+        url.protocol = "http:";
+      }
+      return NextResponse.redirect(url);
     }
-    return NextResponse.redirect(url);
+
+    // If logged in user tries to access auth page, redirect to dashboard
+    if (user && isAuthRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      if (url.hostname === "localhost") {
+        url.protocol = "http:";
+      }
+      return NextResponse.redirect(url);
+    }
+  } catch (err) {
+    console.warn("Middleware Supabase auth error:", err);
+    if (isProtectedRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth";
+      if (url.hostname === "localhost") {
+        url.protocol = "http:";
+      }
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

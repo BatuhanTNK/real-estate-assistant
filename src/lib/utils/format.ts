@@ -38,6 +38,10 @@ export function formatDateShort(date: string | Date): string {
 /**
  * Property type label mapping
  */
+export function normalizePropertyType(type: string): string {
+  return type.trim().toLocaleLowerCase("tr-TR").normalize("NFD").replace(/\p{M}/gu, "").replace(/ı/g, "i");
+}
+
 export function getPropertyTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     daire: "Daire",
@@ -46,5 +50,5 @@ export function getPropertyTypeLabel(type: string): string {
     isyeri: "İşyeri",
     diger: "Diğer",
   };
-  return labels[type] || type;
+  return labels[normalizePropertyType(type)] || type;
 }

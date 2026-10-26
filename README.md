@@ -4,7 +4,7 @@ Yapay zekâ (Google Gemini) destekli emlak ilan metni oluşturma uygulaması. Ne
 
 ## Gereksinimler
 
-- Node.js 18+
+- Node.js 22+ (Node.js 24 LTS ile doğrulandı)
 - Bir Supabase projesi
 - Google Gemini API anahtarı
 
@@ -59,7 +59,7 @@ Uygulamadaki "Google ile giriş yap" butonunu çalıştırmak için:
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest (watch modu) |
 | `npm run test:run` | Vitest tek seferlik (CI) |
-| `npm run test:e2e` | Playwright E2E (statik rotalar) |
+| `npm run test:e2e` | Playwright E2E, mobil yerleşim ve erişilebilirlik |
 | `npm run test:e2e:install` | Playwright Chromium tarayıcısını kur |
 
 ## Test
@@ -84,3 +84,7 @@ Uygulamadaki "Google ile giriş yap" butonunu çalıştırmak için:
 ---
 
 Aksi belirtilmedikçe Next.js 16 (Turbopack) kullanır. Bu sürümde bazı dosya/konfigürasyon kuralları değişik olabilir — `AGENTS.md` uyarısına bakın.
+
+## Test ödemeleri
+
+Ücretli plan satın alma henüz canlı kullanıma açık değildir. Test planı etkinleştirme yalnızca `npm run dev` ile başlatılan geliştirme ortamında ve `ENABLE_TEST_CHECKOUT=true` açıkça ayarlandığında kullanılabilir. Üretim derlemesinde simülasyon endpoint’i kapalıdır. Test akışı kart bilgisi toplamaz.

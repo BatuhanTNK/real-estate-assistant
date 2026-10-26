@@ -1,3 +1,4 @@
+import { DashboardNavigation } from "@/components/dashboard-navigation";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,8 +17,9 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 pt-20">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="workspace-shell">
+      <DashboardNavigation />
+      <div className="workspace-content">
         {children}
       </div>
     </div>

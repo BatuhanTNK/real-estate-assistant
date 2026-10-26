@@ -162,6 +162,17 @@ export default function NewListingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+    if (step !== 3) {
+      if (step === 1 && step1Valid) setStep(2);
+      else if (step === 2) setStep(3);
+      return;
+    }
+    if (!step1Valid) {
+      setStep(1);
+      toast.error("Lütfen temel mülk bilgilerini kontrol edin.");
+      return;
+    }
     setLoading(true);
     setResult(null);
 
@@ -231,7 +242,7 @@ export default function NewListingPage() {
 
       setResult(data.result);
       toast.success("İlan metni başarıyla oluşturuldu!", {
-        description: `Kalan hakkınız: ${data.remainingCount}`,
+        description: data.remainingCount == null ? "Sınırsız planınızla devam edebilirsiniz." : `Kalan hakkınız: ${data.remainingCount}`,
       });
     } catch {
       toast.error("Bir şeyler ters gitti, lütfen tekrar deneyin");
@@ -253,9 +264,9 @@ export default function NewListingPage() {
   const step1Valid =
     Boolean(propertyType) &&
     Boolean(ilanTuru) &&
-    Boolean(il) &&
-    Boolean(ilce) &&
-    Boolean(price);
+    il.trim().length >= 2 &&
+    ilce.trim().length >= 2 &&
+    price.trim().length > 0;
 
   const stepLabels = ["Temel Bilgiler", "Mülk Detayları", "Ek Bilgiler & Üret"];
 
@@ -295,6 +306,7 @@ export default function NewListingPage() {
                   }}
                   disabled={stepNum > step && !(stepNum === 2 && step1Valid)}
                   aria-current={isActive ? "step" : undefined}
+                  aria-label={`Adım ${stepNum}: ${label}`}
                   className={`flex items-center gap-2 ${stepNum <= step ? "cursor-pointer" : "cursor-not-allowed"}`}
                 >
                   <span
@@ -438,50 +450,50 @@ export default function NewListingPage() {
                 <CardContent className="space-y-5">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Net m²</Label>
-                      <Input type="number" placeholder="120" value={metrekareNet} onChange={(e) => setMetrekareNet(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-net-m" className="text-slate-400 text-sm">Net m²</Label>
+                      <Input id="listing-net-m" type="number" placeholder="120" value={metrekareNet} onChange={(e) => setMetrekareNet(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Brüt m²</Label>
-                      <Input type="number" placeholder="140" value={metrekareBrut} onChange={(e) => setMetrekareBrut(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Oda Sayısı</Label>
-                      <Input placeholder="3+1" value={odaSayisi} onChange={(e) => setOdaSayisi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Banyo Sayısı</Label>
-                      <Input type="number" placeholder="2" value={banyoSayisi} onChange={(e) => setBanyoSayisi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Bina Yaşı</Label>
-                      <Input placeholder="5" value={binaYasi} onChange={(e) => setBinaYasi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-brut-m" className="text-slate-400 text-sm">Brüt m²</Label>
+                      <Input id="listing-brut-m" type="number" placeholder="140" value={metrekareBrut} onChange={(e) => setMetrekareBrut(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Bulunduğu Kat</Label>
-                      <Input placeholder="5" value={bulunduguKat} onChange={(e) => setBulunduguKat(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-oda-sayisi" className="text-slate-400 text-sm">Oda Sayısı</Label>
+                      <Input id="listing-oda-sayisi" placeholder="3+1" value={odaSayisi} onChange={(e) => setOdaSayisi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Toplam Kat</Label>
-                      <Input placeholder="10" value={katSayisi} onChange={(e) => setKatSayisi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-banyo-sayisi" className="text-slate-400 text-sm">Banyo Sayısı</Label>
+                      <Input id="listing-banyo-sayisi" type="number" placeholder="2" value={banyoSayisi} onChange={(e) => setBanyoSayisi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Aidat (TL/ay)</Label>
-                      <Input type="text" placeholder="1.500" value={aidat} onChange={(e) => setAidat(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-bina-yasi" className="text-slate-400 text-sm">Bina Yaşı</Label>
+                      <Input id="listing-bina-yasi" placeholder="5" value={binaYasi} onChange={(e) => setBinaYasi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="listing-bulundugu-kat" className="text-slate-400 text-sm">Bulunduğu Kat</Label>
+                      <Input id="listing-bulundugu-kat" placeholder="5" value={bulunduguKat} onChange={(e) => setBulunduguKat(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="listing-toplam-kat" className="text-slate-400 text-sm">Toplam Kat</Label>
+                      <Input id="listing-toplam-kat" placeholder="10" value={katSayisi} onChange={(e) => setKatSayisi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="listing-aidat-tl-ay" className="text-slate-400 text-sm">Aidat (TL/ay)</Label>
+                      <Input id="listing-aidat-tl-ay" type="text" placeholder="1.500" value={aidat} onChange={(e) => setAidat(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Isıtma Tipi</Label>
+                      <Label htmlFor="listing-isitma-tipi" className="text-slate-400 text-sm">Isıtma Tipi</Label>
                       <Select value={isitmaTipi} onValueChange={(v) => setIsitmaTipi(v ?? "")}>
-                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectTrigger id="listing-isitma-tipi" className="bg-white/5 border-white/10 text-white">
                           <SelectValue placeholder="Seçin" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-white/10">
@@ -494,9 +506,9 @@ export default function NewListingPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Cephe Yönü</Label>
+                      <Label htmlFor="listing-cephe-yonu" className="text-slate-400 text-sm">Cephe Yönü</Label>
                       <Select value={cepheYonu} onValueChange={(v) => setCepheYonu(v ?? "")}>
-                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectTrigger id="listing-cephe-yonu" className="bg-white/5 border-white/10 text-white">
                           <SelectValue placeholder="Seçin" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-white/10">
@@ -546,23 +558,23 @@ export default function NewListingPage() {
                 <CardContent className="space-y-5">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Alan (m²)</Label>
-                      <Input type="number" placeholder="500" value={alan} onChange={(e) => setAlan(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-alan-m" className="text-slate-400 text-sm">Alan (m²)</Label>
+                      <Input id="listing-alan-m" type="number" placeholder="500" value={alan} onChange={(e) => setAlan(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">İmar Durumu</Label>
-                      <Input placeholder="Konut imarlı" value={imarDurumu} onChange={(e) => setImarDurumu(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-imar-durumu" className="text-slate-400 text-sm">İmar Durumu</Label>
+                      <Input id="listing-imar-durumu" placeholder="Konut imarlı" value={imarDurumu} onChange={(e) => setImarDurumu(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Cephe Bilgisi</Label>
-                      <Input placeholder="Güney cephe, 20m" value={cepheBilgisi} onChange={(e) => setCepheBilgisi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-cephe-bilgisi" className="text-slate-400 text-sm">Cephe Bilgisi</Label>
+                      <Input id="listing-cephe-bilgisi" placeholder="Güney cephe, 20m" value={cepheBilgisi} onChange={(e) => setCepheBilgisi(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Tapu Durumu</Label>
-                      <Input placeholder="Müstakil parsel" value={tapuDurumu} onChange={(e) => setTapuDurumu(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-tapu-durumu" className="text-slate-400 text-sm">Tapu Durumu</Label>
+                      <Input id="listing-tapu-durumu" placeholder="Müstakil parsel" value={tapuDurumu} onChange={(e) => setTapuDurumu(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                   </div>
 
@@ -601,19 +613,19 @@ export default function NewListingPage() {
                 <CardContent className="space-y-5">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Metrekare</Label>
-                      <Input type="number" placeholder="200" value={metrekareIsyeri} onChange={(e) => setMetrekareIsyeri(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-metrekare" className="text-slate-400 text-sm">Metrekare</Label>
+                      <Input id="listing-metrekare" type="number" placeholder="200" value={metrekareIsyeri} onChange={(e) => setMetrekareIsyeri(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Kat / Plaza</Label>
-                      <Input placeholder="3. kat, ABC Plaza" value={katPlaza} onChange={(e) => setKatPlaza(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
+                      <Label htmlFor="listing-kat-plaza" className="text-slate-400 text-sm">Kat / Plaza</Label>
+                      <Input id="listing-kat-plaza" placeholder="3. kat, ABC Plaza" value={katPlaza} onChange={(e) => setKatPlaza(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-slate-500" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Düzen</Label>
+                      <Label htmlFor="listing-duzen" className="text-slate-400 text-sm">Düzen</Label>
                       <Select value={duzen} onValueChange={(v) => setDuzen(v ?? "")}>
-                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectTrigger id="listing-duzen" className="bg-white/5 border-white/10 text-white">
                           <SelectValue placeholder="Seçin" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-white/10">
@@ -625,9 +637,9 @@ export default function NewListingPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Cephe Yönü</Label>
+                      <Label htmlFor="listing-cephe-yonu" className="text-slate-400 text-sm">Cephe Yönü</Label>
                       <Select value={cepheYonu} onValueChange={(v) => setCepheYonu(v ?? "")}>
-                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectTrigger id="listing-cephe-yonu" className="bg-white/5 border-white/10 text-white">
                           <SelectValue placeholder="Seçin" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-white/10">
@@ -658,9 +670,9 @@ export default function NewListingPage() {
                 <CardContent className="space-y-5">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Yapı Durumu</Label>
+                      <Label htmlFor="listing-yapi-durumu" className="text-slate-400 text-sm">Yapı Durumu</Label>
                       <Select value={yapıDurumu} onValueChange={(v) => setYapıDurumu(v ?? "")}>
-                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectTrigger id="listing-yapi-durumu" className="bg-white/5 border-white/10 text-white">
                           <SelectValue placeholder="Seçin" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-white/10">
@@ -671,9 +683,9 @@ export default function NewListingPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Eşya Durumu</Label>
+                      <Label htmlFor="listing-esya-durumu" className="text-slate-400 text-sm">Eşya Durumu</Label>
                       <Select value={esyaDurumu} onValueChange={(v) => setEsyaDurumu(v ?? "")}>
-                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectTrigger id="listing-esya-durumu" className="bg-white/5 border-white/10 text-white">
                           <SelectValue placeholder="Seçin" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-white/10">
@@ -687,9 +699,9 @@ export default function NewListingPage() {
 
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Krediye Uygun</Label>
+                      <Label htmlFor="listing-krediye-uygun" className="text-slate-400 text-sm">Krediye Uygun</Label>
                       <Select value={krediyeUygun} onValueChange={(v) => setKrediyeUygun(v ?? "")}>
-                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectTrigger id="listing-krediye-uygun" className="bg-white/5 border-white/10 text-white">
                           <SelectValue placeholder="Seçin" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-white/10">
@@ -699,9 +711,9 @@ export default function NewListingPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Takasa Açık</Label>
+                      <Label htmlFor="listing-takasa-acik" className="text-slate-400 text-sm">Takasa Açık</Label>
                       <Select value={takasaAcik} onValueChange={(v) => setTakasaAcik(v ?? "")}>
-                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectTrigger id="listing-takasa-acik" className="bg-white/5 border-white/10 text-white">
                           <SelectValue placeholder="Seçin" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-white/10">
@@ -711,9 +723,9 @@ export default function NewListingPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-400 text-sm">Site İçinde</Label>
+                      <Label htmlFor="listing-site-icinde" className="text-slate-400 text-sm">Site İçinde</Label>
                       <Select value={siteIcinde} onValueChange={(v) => setSiteIcinde(v ?? "")}>
-                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectTrigger id="listing-site-icinde" className="bg-white/5 border-white/10 text-white">
                           <SelectValue placeholder="Seçin" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-white/10">
@@ -799,8 +811,9 @@ export default function NewListingPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="space-y-2">
-                  <Label className="text-slate-300">Telefon Numarası</Label>
+                  <Label htmlFor="contact-phone" className="text-slate-300">Telefon Numarası</Label>
                   <Input
+                    id="contact-phone"
                     type="tel"
                     placeholder="0532 XXX XX XX"
                     value={contactPhone}
@@ -813,8 +826,10 @@ export default function NewListingPage() {
                 <Separator className="bg-white/5" />
 
                 <div className="space-y-2">
-                  <Label className="text-slate-300">Ek Notlar</Label>
+                  <Label htmlFor="listing-notes" className="text-slate-300">Ek Notlar</Label>
                   <Textarea
+                    id="listing-notes"
+                    maxLength={2000}
                     placeholder="Öne çıkarmak istediğiniz özellikler, yakın çevredeki olanaklar, özel durumlar vb."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}

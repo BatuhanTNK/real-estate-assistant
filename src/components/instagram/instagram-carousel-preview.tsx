@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { AspectRatio } from "@/lib/utils/canvas-renderer";
+import { Copy, Check, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface CarouselPreviewProps {
   slides: string[]; // data URLs or blob URLs
   caption?: string;
+  aspectRatio?: AspectRatio;
 }
 
 /**
@@ -15,10 +18,13 @@ interface CarouselPreviewProps {
 export function InstagramCarouselPreview({
   slides,
   caption,
+  aspectRatio = "4:5",
 }: CarouselPreviewProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [copied, setCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const isSquare = aspectRatio === "1:1";
 
   const goToSlide = (index: number) => {
     if (index >= 0 && index < slides.length) {
@@ -50,9 +56,32 @@ export function InstagramCarouselPreview({
   return (
     <div className="space-y-4">
       {/* Instagram Post Frame */}
-      <div className="relative rounded-2xl overflow-hidden bg-black border border-white/10 max-w-lg mx-auto">
+      <div className="relative rounded-3xl overflow-hidden bg-slate-950 border-[6px] border-slate-800 shadow-2xl shadow-indigo-950/50 max-w-md mx-auto">
+        {/* Instagram Header */}
+        <div className="px-3.5 py-2.5 bg-slate-950 flex items-center justify-between border-b border-white/5">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 p-[1.5px]">
+              <div className="w-full h-full rounded-full bg-slate-900 overflow-hidden flex items-center justify-center text-[10px] font-bold text-white">
+                IA
+              </div>
+            </div>
+            <div>
+              <span className="text-white text-xs font-semibold block">
+                ilan.asistani
+              </span>
+              <span className="text-slate-400 text-[10px] block">Instagram</span>
+            </div>
+          </div>
+          <div className="text-slate-400 text-sm font-bold">•••</div>
+        </div>
+
         {/* Slayt Görüntüleme */}
-        <div ref={containerRef} className="relative aspect-[4/5] overflow-hidden">
+        <div
+          ref={containerRef}
+          className={`relative ${
+            isSquare ? "aspect-square" : "aspect-[4/5]"
+          } overflow-hidden bg-black`}
+        >
           {slides.map((src, i) => (
             <div
               key={i}
@@ -74,21 +103,10 @@ export function InstagramCarouselPreview({
           {currentSlide > 0 && (
             <button
               onClick={() => goToSlide(currentSlide - 1)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition-colors"
+              aria-label="Önceki slayt"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/80 transition-colors shadow-lg"
             >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
+              <ChevronLeft className="w-5 h-5" />
             </button>
           )}
 
@@ -96,96 +114,73 @@ export function InstagramCarouselPreview({
           {currentSlide < slides.length - 1 && (
             <button
               onClick={() => goToSlide(currentSlide + 1)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition-colors"
+              aria-label="Sonraki slayt"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/80 transition-colors shadow-lg"
             >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
+              <ChevronRight className="w-5 h-5" />
             </button>
           )}
 
           {/* Slayt Numarası */}
-          <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm text-white text-xs font-medium px-2.5 py-1 rounded-full">
+          <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full shadow">
             {currentSlide + 1} / {slides.length}
           </div>
         </div>
 
-        {/* Dot Indicators */}
-        <div className="flex items-center justify-center gap-1.5 py-3 bg-slate-950">
-          {slides.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => goToSlide(i)}
-              className={`w-1.5 h-1.5 rounded-full transition-all duration-200 ${
-                i === currentSlide
-                  ? "bg-indigo-400 w-4"
-                  : "bg-white/30 hover:bg-white/50"
-              }`}
-            />
-          ))}
+        {/* Instagram Alt Çubuğu */}
+        <div className="px-3.5 py-2.5 bg-slate-950 flex items-center justify-between border-t border-white/5">
+          <div className="flex items-center gap-3 text-sm">
+            <span>❤️</span>
+            <span>💬</span>
+            <span>↗️</span>
+          </div>
+
+          {/* Dot Indicators */}
+          <div className="flex items-center gap-1.5">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => goToSlide(i)}
+                aria-label={`Slayt ${i + 1}`}
+                className={`h-1.5 rounded-full transition-all duration-200 ${
+                  i === currentSlide
+                    ? "bg-indigo-400 w-4"
+                    : "bg-white/30 hover:bg-white/50 w-1.5"
+                }`}
+              />
+            ))}
+          </div>
+
+          <span className="text-sm">🔖</span>
         </div>
       </div>
 
       {/* Caption Area */}
       {caption && (
-        <div className="max-w-lg mx-auto">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 shadow-lg">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                📝 Instagram Açıklama (Caption)
+              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                📝 Instagram Açıklaması (Caption)
               </span>
               <button
                 onClick={handleCopyCaption}
-                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors"
+                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium transition-colors bg-indigo-500/10 px-2.5 py-1 rounded-lg border border-indigo-500/20"
               >
                 {copied ? (
                   <>
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    Kopyalandı!
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400">Kopyalandı!</span>
                   </>
                 ) : (
                   <>
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                      />
-                    </svg>
+                    <Copy className="w-3.5 h-3.5" />
                     Kopyala
                   </>
                 )}
               </button>
             </div>
-            <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap line-clamp-6">
+            <p className="text-slate-300 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto pr-1">
               {caption}
             </p>
           </div>

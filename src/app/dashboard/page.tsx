@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
+import { Camera } from "lucide-react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -78,7 +79,7 @@ export default async function DashboardPage() {
         <div className="flex items-center gap-3">
           <Link href="/dashboard/instagram">
             <Button variant="outline" className="border-indigo-500/30 text-indigo-300 hover:text-white hover:bg-indigo-500/10">
-              <span className="mr-1.5">📸</span>
+              <Camera className="mr-1.5 size-4" />
               Instagram Kartı
             </Button>
           </Link>
@@ -167,12 +168,12 @@ export default async function DashboardPage() {
       </div>
 
       {/* Promo Banner for Instagram Feature */}
-      <Card className="bg-gradient-to-r from-indigo-950/60 via-purple-950/40 to-slate-950/60 border-indigo-500/20 backdrop-blur-sm mb-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+      <Card className="bg-[#223127] border-indigo-500/20 backdrop-blur-sm mb-8 relative overflow-hidden">
+
         <CardContent className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Badge className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white border-0 text-[10px]">
+              <Badge className="bg-indigo-600 text-white border-0 text-[10px]">
                 YENİ ÖZELLİK
               </Badge>
               <span className="text-white font-semibold">Instagram İlan Kartı Oluşturucu</span>
@@ -183,7 +184,7 @@ export default async function DashboardPage() {
           </div>
           <Link href="/dashboard/instagram" className="shrink-0">
             <Button className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium">
-              📸 Kart Oluştur →
+              Kart Oluştur →
             </Button>
           </Link>
         </CardContent>

@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { formatDateShort, getPropertyTypeLabel } from "@/lib/utils/format";
+import { formatDateShort, getPropertyTypeLabel, normalizePropertyType } from "@/lib/utils/format";
+import { toast } from "sonner";
 import { DeleteListingButton } from "@/components/listing-results/delete-listing-button";
 import { FavoriteButton } from "@/components/listing-results/favorite-button";
 
@@ -37,6 +38,7 @@ export function ListingsHistory({
   totalCount: number;
 }) {
   const [listings, setListings] = useState<ListingSummary[]>(initialListings);
+  const [total, setTotal] = useState(totalCount);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -48,42 +50,45 @@ export function ListingsHistory({
     setLoadingMore(true);
     try {
       const supabase = createClient();
-      let { data, error } = await supabase
+      const response = await supabase
         .from("listings")
         .select("id, property_type, output_kisa, created_at, is_favorite")
         .order("created_at", { ascending: false })
         .range(listings.length, listings.length + PAGE_SIZE - 1);
+      let data = response.data;
 
-      if (error) {
-        const { data: fallback } = await supabase
+      if (response.error) {
+        const { data: fallback, error: fallbackError } = await supabase
           .from("listings")
           .select("id, property_type, output_kisa, created_at")
           .order("created_at", { ascending: false })
           .range(listings.length, listings.length + PAGE_SIZE - 1);
+        if (fallbackError) throw fallbackError;
         data = (fallback || []).map((item: ListingSummary) => ({ ...item, is_favorite: false }));
       }
 
       const next = data ?? [];
       const newCount = listings.length + next.length;
-      const fullCount = Math.max(totalCount, newCount);
+      const fullCount = Math.max(total, newCount);
       setListings((prev) => [...prev, ...next]);
       setHasMore(newCount < fullCount && next.length === PAGE_SIZE);
       setAllLoaded(newCount >= fullCount);
     } catch (err) {
       console.error("Load more error:", err);
+      toast.error("İlanlar yüklenemedi. Lütfen tekrar deneyin.");
     } finally {
       setLoadingMore(false);
     }
-  }, [listings.length, totalCount]);
+  }, [listings.length, total]);
 
   // İstemci tarafı filtreleme: yüklü kayıtlar içinde arama/tip/favori.
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim().toLocaleLowerCase("tr-TR");
     return listings.filter((l) => {
-      if (typeFilter !== "all" && l.property_type !== typeFilter) return false;
+      if (typeFilter !== "all" && normalizePropertyType(l.property_type) !== typeFilter) return false;
       if (showFavoritesOnly && !l.is_favorite) return false;
       if (!q) return true;
-      return (l.output_kisa ?? "").toLowerCase().includes(q);
+      return (l.output_kisa ?? "").toLocaleLowerCase("tr-TR").includes(q);
     });
   }, [listings, search, typeFilter, showFavoritesOnly]);
 
@@ -120,6 +125,7 @@ export function ListingsHistory({
           variant="ghost"
           size="sm"
           onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          aria-pressed={showFavoritesOnly}
           className={`flex items-center gap-1.5 text-sm transition-all h-8 ${
             showFavoritesOnly
               ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/15"
@@ -146,7 +152,7 @@ export function ListingsHistory({
       {(search || typeFilter !== "all" || showFavoritesOnly) && (
         <p className="text-sm text-slate-400 mb-4">
           {showingCount} sonuç gösteriliyor
-          {!allLoaded && typeFilter !== "all" && (
+          {!allLoaded && (
             <span className="text-slate-500">
               {" "}— sadece yüklenen {loadedCount} ilan içinde filtreleniyor
             </span>
@@ -170,7 +176,7 @@ export function ListingsHistory({
             {filtered.map((listing) => (
               <div
                 key={listing.id}
-                className="flex items-center justify-between p-4 rounded-xl bg-white/3 hover:bg-white/5 transition-colors group"
+                className="flex flex-col gap-3 sm:flex-row sm:items-center justify-between p-4 rounded-xl bg-white/3 hover:bg-white/5 transition-colors group"
               >
                 <div className="flex items-center gap-4 min-w-0">
                   <div className="w-10 h-10 bg-indigo-500/10 rounded-lg flex items-center justify-center shrink-0">
@@ -205,24 +211,27 @@ export function ListingsHistory({
                   <FavoriteButton
                     listingId={listing.id}
                     initialFavorite={listing.is_favorite ?? false}
+                    onFavoriteChange={(favorite) => setListings((previous) => previous.map((item) => item.id === listing.id ? { ...item, is_favorite: favorite } : item))}
                     variant="icon"
                   />
                   <Link href={`/dashboard/listing/${listing.id}`}>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-slate-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="text-slate-400 hover:text-white lg:opacity-0 lg:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
                     >
                       Görüntüle →
                     </Button>
                   </Link>
-                  <DeleteListingButton listingId={listing.id} variant="icon" />
+                  <DeleteListingButton listingId={listing.id} variant="icon" onDeleted={() => { setListings((previous) => previous.filter((item) => item.id !== listing.id)); setTotal((previous) => Math.max(0, previous - 1)); }} />
                 </div>
               </div>
             ))}
           </div>
 
-          {hasMore && !search && typeFilter === "all" && !showFavoritesOnly && (
+        </>
+      )}
+          {hasMore && (
             <div className="mt-6 text-center">
               <Button
                 variant="outline"
@@ -230,12 +239,10 @@ export function ListingsHistory({
                 disabled={loadingMore}
                 className="border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
               >
-                {loadingMore ? "Yükleniyor..." : `Daha fazla yükle (${loadedCount}/${totalCount})`}
+                {loadingMore ? "Yükleniyor..." : `Daha fazla yükle (${loadedCount}/${total})`}
               </Button>
             </div>
           )}
-        </>
-      )}
     </div>
   );
 }

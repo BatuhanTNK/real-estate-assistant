@@ -16,6 +16,7 @@ interface DeleteListingButtonProps {
   /** Detay sayfasında silindikten sonra dashboard'a dönmek için */
   redirectAfterDelete?: boolean;
   className?: string;
+  onDeleted?: () => void;
 }
 
 export function DeleteListingButton({
@@ -23,6 +24,7 @@ export function DeleteListingButton({
   variant = "icon",
   redirectAfterDelete = false,
   className,
+  onDeleted,
 }: DeleteListingButtonProps) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -48,6 +50,7 @@ export function DeleteListingButton({
       }
 
       toast.success("İlan silindi");
+      onDeleted?.();
       if (redirectAfterDelete) {
         router.push("/dashboard");
       }

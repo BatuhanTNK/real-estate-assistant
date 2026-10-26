@@ -7,8 +7,6 @@ import {
   legalMetadata,
   isLegalDocId,
 } from "@/app/legal/content";
-import { Footer } from "@/components/footer";
-import { Logo } from "@/components/ui/logo";
 
 export function generateStaticParams() {
   return legalDocIds.map((id) => ({ type: id }));
@@ -40,22 +38,10 @@ export default async function LegalPage({
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col">
-      <header className="border-b border-white/5">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Ana sayfaya dön
-          </Link>
-          <div className="ml-auto">
-            <Logo size="md" />
-          </div>
-        </div>
-      </header>
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-12">
+
+      <article className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-28 pb-12">
+        <Link href="/" className="mb-8 inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white"><ArrowLeft className="size-4" />Ana sayfaya dön</Link>
         <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
           {doc.title}
         </h1>
@@ -93,9 +79,9 @@ export default async function LegalPage({
             .
           </p>
         </div>
-      </main>
+      </article>
 
-      <Footer />
+
     </div>
   );
 }

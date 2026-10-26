@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
-  User as UserIcon,
   Lock,
   Mail,
   CreditCard,
@@ -284,7 +283,6 @@ export default function SettingsPage() {
 
   const planLabel = profile ? (planLabels[profile.plan] ?? profile.plan) : "-";
   const isFree = profile?.plan === "free";
-  const isTeamPlan = profile?.plan === "team" || profile?.plan === "individual";
   const usagePercent = isFree
     ? Math.min((profile?.monthly_listing_count ?? 0) / FREE_PLAN_LIMIT, 1) * 100
     : 0;

@@ -42,7 +42,7 @@ test.describe("Yasal sayfalar — /legal/:type", () => {
   for (const { type, title } of LEGAL) {
     test(`/legal/${type} başlık içerir`, async ({ page }) => {
       await page.goto(`/legal/${type}`);
-      await expect(page.getByRole("heading", { name: title })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: title, exact: true })).toBeVisible();
     });
   }
 });

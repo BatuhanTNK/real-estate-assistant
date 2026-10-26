@@ -167,12 +167,10 @@ function TextStatsBar({ stats }: { stats: TextStatsResult }) {
 /** ──────────── Refine (Düzenleme) Paneli ──────────── */
 function RefinePanel({
   originalText,
-  toneKey,
   onApply,
   onClose,
 }: {
   originalText: string;
-  toneKey: string;
   onApply: (refined: string) => void;
   onClose: () => void;
 }) {
@@ -786,7 +784,6 @@ export function ResultCards({ result, onRegenerate }: ResultCardsProps) {
               {isEditing && (
                 <RefinePanel
                   originalText={currentText}
-                  toneKey={tone.key}
                   onApply={(refined) => handleApplyRefine(tone.key, refined)}
                   onClose={() => setEditingTone(null)}
                 />

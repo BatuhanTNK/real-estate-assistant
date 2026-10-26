@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,7 @@ function AuthForm() {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const handleGoogleSignIn = async () => {
     setOauthLoading(true);
@@ -187,7 +187,7 @@ function AuthForm() {
 
       <Card className="border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl">
         <CardHeader className="text-center pb-2">
-          <CardTitle className="text-2xl text-white">Hoş Geldiniz</CardTitle>
+          <CardTitle className="text-2xl text-white"><h1>Hoş Geldiniz</h1></CardTitle>
           <CardDescription className="text-slate-400">
             Profesyonel emlak ilan metinleri oluşturmaya başlayın
           </CardDescription>
@@ -199,7 +199,7 @@ function AuthForm() {
               <span>{error}</span>
             </div>
           )}
-          {message && (
+          {message && !forgotMode && (
             <div role="status" aria-live="polite" className="mb-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-sm flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5 text-emerald-400" />
               <div>
@@ -212,7 +212,7 @@ function AuthForm() {
           {forgotMode ? (
             <div className="space-y-4 mt-4">
               <div className="text-center">
-                <h3 className="text-lg font-semibold text-white">Şifrenizi mi unuttunuz?</h3>
+                <h2 className="text-lg font-semibold text-white">Şifrenizi mi unuttunuz?</h2>
                 <p className="text-sm text-slate-400 mt-1">
                   E-posta adresinizi girin, şifre sıfırlama bağlantısı gönderelim.
                 </p>
@@ -243,6 +243,8 @@ function AuthForm() {
                     <Label htmlFor="forgot-email" className="text-slate-300">E-posta Adresi</Label>
                     <Input
                       id="forgot-email"
+                      name="email"
+                      autoComplete="email"
                       type="email"
                       placeholder="ornek@domain.com"
                       value={email}
@@ -273,7 +275,7 @@ function AuthForm() {
               )}
             </div>
           ) : (
-          <Tabs defaultValue="login" className="w-full">
+          <Tabs defaultValue="login" className="w-full" onValueChange={() => { setError(null); setMessage(null); setShowPassword(false); }}>
             <TabsList className="grid w-full grid-cols-2 bg-white/5 p-1 rounded-lg">
               <TabsTrigger value="login" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white text-slate-400 rounded-md transition-all">
                 Giriş Yap
@@ -289,7 +291,7 @@ function AuthForm() {
                 type="button"
                 variant="outline"
                 onClick={handleGoogleSignIn}
-                disabled={oauthLoading}
+                disabled={oauthLoading || loading}
                 className="w-full bg-white/5 border-white/10 text-white hover:bg-white/10 hover:text-white font-medium transition-all duration-300 py-5"
               >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
@@ -317,6 +319,8 @@ function AuthForm() {
                   <div className="relative">
                     <Input
                       id="login-email"
+                      name="email"
+                      autoComplete="username"
                       type="email"
                       placeholder="ornek@domain.com"
                       value={email}
@@ -333,6 +337,8 @@ function AuthForm() {
                   <div className="relative">
                     <Input
                       id="login-password"
+                      name="password"
+                      autoComplete="current-password"
                       type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={password}
@@ -346,7 +352,7 @@ function AuthForm() {
                       onClick={() => setShowPassword(!showPassword)}
                       aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
                       aria-pressed={showPassword}
-                      className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300"
+                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500 hover:text-slate-300"
                     >
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
@@ -356,7 +362,7 @@ function AuthForm() {
                 <Button
                   type="submit"
                   className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-medium transition-all duration-300 py-5 shadow-lg shadow-indigo-600/20"
-                  disabled={loading}
+                  disabled={loading || oauthLoading}
                 >
                   {loading ? "Giriş yapılıyor..." : "Giriş Yap"}
                 </Button>
@@ -383,6 +389,8 @@ function AuthForm() {
                   <Label htmlFor="signup-name" className="text-slate-300">Ad Soyad</Label>
                   <Input
                     id="signup-name"
+                      name="name"
+                      autoComplete="name"
                     type="text"
                     placeholder="Ahmet Yılmaz"
                     value={fullName}
@@ -397,6 +405,8 @@ function AuthForm() {
                   <div className="relative">
                     <Input
                       id="signup-email"
+                      name="email"
+                      autoComplete="email"
                       type="email"
                       placeholder="ornek@domain.com"
                       value={email}
@@ -413,6 +423,8 @@ function AuthForm() {
                   <div className="relative">
                     <Input
                       id="signup-password"
+                      name="password"
+                      autoComplete="new-password"
                       type={showPassword ? "text" : "password"}
                       placeholder="En az 6 karakter"
                       value={password}
@@ -426,7 +438,7 @@ function AuthForm() {
                       onClick={() => setShowPassword(!showPassword)}
                       aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
                       aria-pressed={showPassword}
-                      className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300"
+                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500 hover:text-slate-300"
                     >
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
@@ -436,7 +448,7 @@ function AuthForm() {
                 <Button
                   type="submit"
                   className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-medium transition-all duration-300 py-5 shadow-lg shadow-emerald-600/20"
-                  disabled={loading}
+                  disabled={loading || oauthLoading}
                 >
                   {loading ? "Kayıt yapılıyor..." : "Ücretsiz Kayıt Ol"}
                 </Button>

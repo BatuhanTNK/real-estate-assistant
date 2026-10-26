@@ -8,12 +8,14 @@ interface FavoriteButtonProps {
   listingId: string;
   initialFavorite?: boolean;
   variant?: "icon" | "full";
+  onFavoriteChange?: (favorite: boolean) => void;
 }
 
 export function FavoriteButton({
   listingId,
   initialFavorite = false,
   variant = "icon",
+  onFavoriteChange,
 }: FavoriteButtonProps) {
   const [isFavorite, setIsFavorite] = useState(initialFavorite);
   const [loading, setLoading] = useState(false);
@@ -35,6 +37,7 @@ export function FavoriteButton({
       }
 
       setIsFavorite(data.is_favorite);
+      onFavoriteChange?.(data.is_favorite);
       toast.success(
         data.is_favorite ? "Favorilere eklendi" : "Favorilerden çıkarıldı"
       );
@@ -54,9 +57,11 @@ export function FavoriteButton({
         className={`p-1.5 rounded-lg transition-all disabled:opacity-50 ${
           isFavorite
             ? "text-amber-400 hover:text-amber-300"
-            : "text-slate-500 hover:text-amber-400 opacity-0 group-hover:opacity-100"
+            : "text-slate-500 hover:text-amber-400 lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100"
         }`}
         title={isFavorite ? "Favorilerden çıkar" : "Favorilere ekle"}
+        aria-label={isFavorite ? "Favorilerden çıkar" : "Favorilere ekle"}
+        aria-pressed={isFavorite}
       >
         <svg
           className="w-4 h-4"

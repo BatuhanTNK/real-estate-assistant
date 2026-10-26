@@ -27,7 +27,7 @@ export default defineConfig({
   webServer: {
     // 3100 portu, geliştirme makinesinde zaten :3000'de çalışan başka bir
     // Next.js uygulamasıyla çakışmayı önler. CI'da da aynı portu kullanırız.
-    command: "npm run build && npm run start -- -p 3100",
+    command: "\"" + process.execPath + "\" node_modules/next/dist/bin/next build && \"" + process.execPath + "\" node_modules/next/dist/bin/next start -p 3100",
     url: "http://localhost:3100",
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

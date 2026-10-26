@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import { isTestCheckoutEnabled } from "@/lib/checkout-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,9 @@ const simulateSchema = z.object({
  * Test modunda tek tıkla plan yükseltme / düşürme (Geliştirici ortamı için).
  */
 export async function POST(request: NextRequest) {
+  if (!isTestCheckoutEnabled()) {
+    return NextResponse.json({ error: "Test ödemeleri bu ortamda kapalı" }, { status: 403 });
+  }
   try {
     const supabase = await createClient();
     const {
