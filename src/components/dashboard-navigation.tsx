@@ -7,7 +7,7 @@ import { ArrowUpRight, CreditCard, FilePlus2, Image, LayoutDashboard, Settings2 
 const links = [
   { href: "/dashboard", label: "Genel bakış", icon: LayoutDashboard },
   { href: "/dashboard/new", label: "İlan oluştur", icon: FilePlus2 },
-  { href: "/dashboard/instagram", label: "Instagram stüdyosu", icon: Image },
+  { href: "/dashboard/instagram", label: "Sosyal medya stüdyosu", icon: Image },
   { href: "/dashboard/settings", label: "Hesap ayarları", icon: Settings2 },
 ];
 export function DashboardNavigation() {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,16 +12,78 @@ import { Eye, EyeOff, Mail, CheckCircle2, AlertCircle } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import Link from "next/link";
 
-function isFailedToFetch(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "message" in err &&
-    typeof (err as { message?: unknown }).message === "string" &&
-    ((err as { message: string }).message.includes("Failed to fetch") ||
-      String(err).includes("Failed to fetch"))
-  );
+interface GoogleTokenResponse {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
 }
+
+interface GoogleTokenClient {
+  requestAccessToken: (overrideConfig?: { prompt?: string }) => void;
+}
+
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        oauth2?: {
+          initTokenClient: (config: {
+            client_id: string;
+            scope: string;
+            callback: (response: GoogleTokenResponse) => void;
+            error_callback?: (err: { type?: string; message?: string }) => void;
+          }) => GoogleTokenClient;
+        };
+      };
+    };
+  }
+}
+
+function loadGoogleIdentityScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined") {
+      reject(new Error("Tarayıcı ortamı bulunamadı"));
+      return;
+    }
+    if (window.google?.accounts?.oauth2) {
+      resolve();
+      return;
+    }
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[src="https://accounts.google.com/gsi/client"]'
+    );
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("Google script yüklenemedi")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Google giriş servisi yüklenemedi"));
+    document.head.appendChild(script);
+  });
+}
+
+function isFailedToFetch(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { message?: unknown; name?: unknown; status?: unknown };
+  if (e.name === "AuthRetryableFetchError") return true;
+  if (typeof e.status === "number" && (e.status === 0 || e.status >= 520)) return true;
+  if (typeof e.message === "string") {
+    return (
+      e.message.includes("Failed to fetch") ||
+      e.message.includes("fetch failed") ||
+      e.message.includes("NetworkError")
+    );
+  }
+  return String(err).includes("Failed to fetch");
+}
+
+const SUPABASE_OFFLINE_MSG =
+  "Supabase sunucusuna şu anda bağlanılamıyor (sunucu henüz açılmamış veya başlatılıyor olabilir). Lütfen biraz bekleyip tekrar deneyin.";
 
 function AuthForm() {
   const [email, setEmail] = useState("");
@@ -30,28 +92,128 @@ function AuthForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [error, setError] = useState<string | null>(
-    searchParams.get("error") === "auth_callback_error"
-      ? "E-posta doğrulama bağlantısı geçersiz veya süresi dolmuş."
-      : null
-  );
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const errType = params.get("error");
+    const errMsg = params.get("message") || params.get("error_description");
+    if (errType === "oauth_error") {
+      setError(errMsg || "Google ile giriş işlemi tamamlanamadı veya iptal edildi.");
+    } else if (errType === "auth_callback_error") {
+      setError("Giriş veya doğrulama bağlantısı geçersiz ya da süresi dolmuş. Lütfen tekrar deneyin.");
+    }
+  }, []);
   const [message, setMessage] = useState<string | null>(null);
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const supabase = useMemo(() => createClient(), []);
+  const supabaseGoogleEnabledRef = useRef<boolean | null>(null);
+  const tokenClientRef = useRef<GoogleTokenClient | null>(null);
+
+  useEffect(() => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
+    if (supabaseUrl && supabaseAnonKey) {
+      fetch(`${supabaseUrl}/auth/v1/settings`, {
+        headers: { apikey: supabaseAnonKey },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((settings: { external?: { google?: boolean } } | null) => {
+          if (settings?.external && typeof settings.external.google === "boolean") {
+            supabaseGoogleEnabledRef.current = settings.external.google;
+          }
+        })
+        .catch(() => {
+          // ignore
+        });
+    }
+
+    if (googleClientId) {
+      loadGoogleIdentityScript()
+        .then(() => {
+          const oauth2 = window.google?.accounts?.oauth2;
+          if (!oauth2) return;
+          tokenClientRef.current = oauth2.initTokenClient({
+            client_id: googleClientId,
+            scope: "openid email profile",
+            callback: async (tokenResponse: GoogleTokenResponse) => {
+              if (tokenResponse.error || !tokenResponse.access_token) {
+                setError(
+                  tokenResponse.error_description ||
+                    "Google ile giriş iptal edildi veya tamamlanamadı."
+                );
+                setOauthLoading(false);
+                return;
+              }
+
+              try {
+                const res = await fetch("/api/auth/google", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ accessToken: tokenResponse.access_token }),
+                });
+                const data = (await res.json()) as { error?: string; success?: boolean };
+                if (!res.ok || !data.success) {
+                  setError(data.error || "Google ile oturum açılamadı.");
+                  setOauthLoading(false);
+                  return;
+                }
+                router.push("/dashboard");
+                router.refresh();
+              } catch {
+                setError("Google oturumu doğrulanırken bağlantı hatası oluştu.");
+                setOauthLoading(false);
+              }
+            },
+            error_callback: (err) => {
+              if (err?.type === "popup_failed_to_open") {
+                setError(
+                  "Tarayıcınız Google giriş penceresini (pop-up) engelledi. Lütfen adres çubuğunun sağındaki simgeden pop-up izni verin ve tekrar deneyin."
+                );
+              }
+              setOauthLoading(false);
+            },
+          });
+        })
+        .catch(() => {
+          // ignore
+        });
+    }
+  }, [router]);
 
   const handleGoogleSignIn = async () => {
     setOauthLoading(true);
     setError(null);
     try {
+      const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
+      // 1) Eğer Supabase Google sağlayıcısı aktif değilse (veya NEXT_PUBLIC_GOOGLE_CLIENT_ID hazırsa)
+      //    pop-up engelleyiciye takılmamak için senkron olarak doğrudan Google penceresini aç
+      if (supabaseGoogleEnabledRef.current !== true && tokenClientRef.current) {
+        tokenClientRef.current.requestAccessToken({ prompt: "select_account" });
+        return;
+      }
+
       if (!supabase.auth.signInWithOAuth) {
         setError("Supabase yapılandırılmamış. Lütfen .env.local dosyanızdaki Supabase bilgilerinizi kontrol edin.");
         setOauthLoading(false);
         return;
       }
+
+      if (supabaseGoogleEnabledRef.current === false && !googleClientId) {
+        setError(
+          "Google ile giriş henüz aktif değil. Supabase Dashboard (Authentication → Providers → Google) üzerinden Google sağlayıcısını etkinleştirin veya E-posta ve Şifre ile giriş yapın."
+        );
+        setOauthLoading(false);
+        return;
+      }
+
+      // 2) Supabase üzerinde Google sağlayıcısı aktifse standart Supabase OAuth akışı
       const redirectTo =
         typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -62,10 +224,9 @@ function AuthForm() {
         setError(oauthError.message);
         setOauthLoading(false);
       }
-      // Başarılıysa tarayıcı Google'a yönlendirir; sayfa unloads.
     } catch (err: unknown) {
       if (isFailedToFetch(err)) {
-        setError("Supabase sunucusuna bağlanılamadı. .env.local dosyanızdaki Project URL adresini kontrol edin.");
+        setError(SUPABASE_OFFLINE_MSG);
       } else {
         setError("Google ile giriş başlatılamadı.");
       }
@@ -111,7 +272,9 @@ function AuthForm() {
       });
 
       if (loginError) {
-        if (loginError.message === "Invalid login credentials") {
+        if (isFailedToFetch(loginError)) {
+          setError(SUPABASE_OFFLINE_MSG);
+        } else if (loginError.message === "Invalid login credentials") {
           setError("E-posta veya şifre hatalı.");
         } else if (loginError.message.includes("Email not confirmed")) {
           setError("E-posta adresiniz henüz doğrulanmamış. Lütfen gelen kutunuzdaki doğrulama bağlantısına tıklayın.");
@@ -126,7 +289,7 @@ function AuthForm() {
     } catch (err: unknown) {
       console.error("Login catch error:", err);
       if (isFailedToFetch(err)) {
-        setError("Supabase sunucusuna bağlanılamadı. Lütfen Supabase panelindeki (Settings -> API) Project URL adresinizi .env.local dosyanızda kontrol edin.");
+        setError(SUPABASE_OFFLINE_MSG);
       } else {
         setError("Giriş yapılırken bir bağlantı hatası oluştu.");
       }
@@ -155,7 +318,11 @@ function AuthForm() {
       });
 
       if (signUpError) {
-        setError(signUpError.message);
+        if (isFailedToFetch(signUpError)) {
+          setError(SUPABASE_OFFLINE_MSG);
+        } else {
+          setError(signUpError.message);
+        }
         setLoading(false);
         return;
       }
@@ -477,9 +644,7 @@ export default function AuthPage() {
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl" />
       </div>
-      <Suspense fallback={<div className="text-white">Yükleniyor...</div>}>
-        <AuthForm />
-      </Suspense>
+      <AuthForm />
     </div>
   );
 }

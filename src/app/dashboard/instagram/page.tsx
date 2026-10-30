@@ -19,6 +19,7 @@ import {
   SlideTheme,
   AspectRatio,
   CoverLayoutType,
+  StudioPlatform,
 } from "@/lib/utils/canvas-renderer";
 import {
   ArrowLeft,
@@ -38,7 +39,46 @@ import {
   MoveRight,
   Tag,
   Wand2,
+  Copy,
 } from "lucide-react";
+
+const PLATFORM_CONFIGS: {
+  id: StudioPlatform;
+  label: string;
+  badge: string;
+  desc: string;
+  icon: string;
+  defaultRatio: AspectRatio;
+  defaultTheme?: SlideTheme;
+}[] = [
+  {
+    id: "sahibinden",
+    label: "Sahibinden.com",
+    badge: "İlan & Vitrin",
+    desc: "4:3 / 16:9 vitrin görselleri ve kurumsal ilan açıklaması",
+    icon: "🏠",
+    defaultRatio: "4:3",
+    defaultTheme: "sahibinden_vitrin",
+  },
+  {
+    id: "instagram",
+    label: "Instagram",
+    badge: "Carousel & Story",
+    desc: "4:5 dikey, 1:1 kare veya 9:16 Reels/Story kartları ve keşfet metni",
+    icon: "📸",
+    defaultRatio: "4:5",
+    defaultTheme: "modern_dark",
+  },
+  {
+    id: "facebook",
+    label: "Facebook",
+    badge: "Akış & Marketplace",
+    desc: "1:1 kare / 16:9 yatay paylaşım kartları ve grup/Marketplace metni",
+    icon: "📘",
+    defaultRatio: "1:1",
+    defaultTheme: "modern_dark",
+  },
+];
 
 const PORTRAIT_STYLES = [
   {
@@ -69,6 +109,12 @@ const THEME_OPTIONS: { value: SlideTheme; label: string; desc: string; emoji: st
     emoji: "🌙",
   },
   {
+    value: "sahibinden_vitrin",
+    label: "Sahibinden Vitrin",
+    desc: "Sarı-siyah vitrin vurgusu, dikkat çekici",
+    emoji: "🏠",
+  },
+  {
     value: "gold_luxury",
     label: "Lüks Altın",
     desc: "Altın sarısı detaylar, elit tasarım",
@@ -79,6 +125,44 @@ const THEME_OPTIONS: { value: SlideTheme; label: string; desc: string; emoji: st
     label: "Minimalist Açık",
     desc: "Buzlu cam etkisi, modern şık",
     emoji: "💎",
+  },
+];
+
+const ASPECT_RATIO_OPTIONS: {
+  value: AspectRatio;
+  label: string;
+  size: string;
+  platforms: string;
+}[] = [
+  {
+    value: "4:3",
+    label: "4:3 İlan",
+    size: "1200×900",
+    platforms: "Sahibinden Standart",
+  },
+  {
+    value: "16:9",
+    label: "16:9 Yatay",
+    size: "1600×900",
+    platforms: "Vitrin & Facebook",
+  },
+  {
+    value: "4:5",
+    label: "4:5 Dikey",
+    size: "1080×1350",
+    platforms: "Instagram & FB",
+  },
+  {
+    value: "1:1",
+    label: "1:1 Kare",
+    size: "1080×1080",
+    platforms: "Instagram & Marketplace",
+  },
+  {
+    value: "9:16",
+    label: "9:16 Story",
+    size: "1080×1920",
+    platforms: "Hikaye & Reels",
   },
 ];
 
@@ -104,7 +188,10 @@ interface Profile {
 interface SavedListing {
   id: string;
   property_type: string;
-  input_data: Partial<Omit<ListingFormData, "location">> & { location?: Partial<ListingFormData["location"]> | string; arsaAlani?: string };
+  input_data: Partial<Omit<ListingFormData, "location">> & {
+    location?: Partial<ListingFormData["location"]> | string;
+    arsaAlani?: string;
+  };
   output_kisa: string | null;
   output_samimi: string | null;
   output_resmi: string | null;
@@ -117,7 +204,7 @@ interface PropertyPhotoItem {
   tag: string;
 }
 
-export default function InstagramPage() {
+export default function SocialMediaStudioPage() {
   const router = useRouter();
   const supabase = createClient();
 
@@ -129,6 +216,9 @@ export default function InstagramPage() {
   const [step, setStep] = useState(1);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Hedef Platform Seçimi (Sahibinden, Instagram, Facebook)
+  const [platform, setPlatform] = useState<StudioPlatform>("instagram");
 
   // Kayıtlı ilanlar
   const [savedListings, setSavedListings] = useState<SavedListing[]>([]);
@@ -148,14 +238,20 @@ export default function InstagramPage() {
   const [generatingPortrait, setGeneratingPortrait] = useState(false);
   const [portraitPreview, setPortraitPreview] = useState<string | null>(null);
 
-  // Adım 2 — Mülk bilgileri & metin
+  // Adım 2 — Mülk bilgileri & Platform metinleri
   const [price, setPrice] = useState("");
   const [location, setLocation] = useState("");
   const [area, setArea] = useState("");
   const [rooms, setRooms] = useState("");
   const [floor, setFloor] = useState("");
   const [badgeText, setBadgeText] = useState("SATILIK LÜKS KONUT");
-  const [captionText, setCaptionText] = useState("");
+  const [platformCaptions, setPlatformCaptions] = useState<
+    Record<StudioPlatform, string>
+  >({
+    sahibinden: "",
+    instagram: "",
+    facebook: "",
+  });
   const [generatingCaption, setGeneratingCaption] = useState(false);
 
   // Adım 3 — Mülk fotoğrafları
@@ -165,6 +261,25 @@ export default function InstagramPage() {
   const [slideBlobs, setSlideBlobs] = useState<Blob[]>([]);
   const [slideUrls, setSlideUrls] = useState<string[]>([]);
   const [rendering, setRendering] = useState(false);
+
+  const currentCaption = platformCaptions[platform] || "";
+  const setCurrentCaption = (val: string) => {
+    setPlatformCaptions((prev) => ({ ...prev, [platform]: val }));
+  };
+
+  // Platform değiştirildiğinde önerilen boyut ve temayı uygula
+  const handleSelectPlatform = (nextPlatform: StudioPlatform) => {
+    setPlatform(nextPlatform);
+    const cfg = PLATFORM_CONFIGS.find((p) => p.id === nextPlatform);
+    if (cfg) {
+      setAspectRatio(cfg.defaultRatio);
+      if (nextPlatform === "sahibinden") {
+        setTheme("sahibinden_vitrin");
+      } else if (theme === "sahibinden_vitrin") {
+        setTheme("modern_dark");
+      }
+    }
+  };
 
   // Profil ve Geçmiş İlanları yükleme
   useEffect(() => {
@@ -177,7 +292,6 @@ export default function InstagramPage() {
         return;
       }
 
-      // Profil
       const { data: profData } = await supabase
         .from("profiles")
         .select("plan, full_name, office_name, logo_url, phone_number")
@@ -186,10 +300,11 @@ export default function InstagramPage() {
 
       if (profData) setProfile(profData as Profile);
 
-      // Geçmiş ilanlar (son 25 ilan)
       const { data: listData } = await supabase
         .from("listings")
-        .select("id, property_type, input_data, output_kisa, output_samimi, output_resmi, created_at")
+        .select(
+          "id, property_type, input_data, output_kisa, output_samimi, output_resmi, created_at"
+        )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(25);
@@ -204,7 +319,7 @@ export default function InstagramPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Kayıtlı ilandan bilgileri otomatik doldurma
+  // Kayıtlı ilandan bilgileri otomatik doldurma (3 platform metnini birden aktarır)
   const handleSelectSavedListing = (listingId: string) => {
     setSelectedListingId(listingId);
     if (!listingId) return;
@@ -216,7 +331,6 @@ export default function InstagramPage() {
 
     if (input.price) setPrice(input.price);
 
-    // Konum çözümleme
     if (input.location) {
       if (typeof input.location === "string") {
         setLocation(input.location);
@@ -230,7 +344,6 @@ export default function InstagramPage() {
       }
     }
 
-    // Metrekare
     const m2 = input.metrekareNet || input.metrekareBrut || input.arsaAlani;
     if (m2) {
       setArea(String(m2).includes("m²") ? String(m2) : `${m2} m²`);
@@ -239,23 +352,34 @@ export default function InstagramPage() {
     if (input.odaSayisi) setRooms(input.odaSayisi);
     if (input.bulunduguKat) setFloor(input.bulunduguKat);
 
-    // Rozet metni
     const ilanTuru = input.ilanTuru || "SATILIK";
     const propType = input.propertyType || listing.property_type || "KONUT";
     setBadgeText(`${ilanTuru.toUpperCase()} ${propType.toUpperCase()}`);
 
-    // Açıklama metni
-    const caption =
-      listing.output_kisa ||
-      listing.output_samimi ||
-      listing.output_resmi ||
-      "";
-    if (caption) setCaptionText(caption);
+    setPlatformCaptions({
+      sahibinden:
+        listing.output_resmi ||
+        listing.output_samimi ||
+        listing.output_kisa ||
+        "",
+      instagram:
+        listing.output_kisa ||
+        listing.output_samimi ||
+        listing.output_resmi ||
+        "",
+      facebook:
+        listing.output_samimi ||
+        listing.output_resmi ||
+        listing.output_kisa ||
+        "",
+    });
 
-    toast.success("İlan bilgileri başarıyla aktarıldı! 🚀");
+    toast.success(
+      "İlan bilgileri Sahibinden, Instagram ve Facebook için aktarıldı! 🚀"
+    );
   };
 
-  // Demo verilerle hızlı doldurma
+  // Demo verilerle hızlı doldurma (3 platform için özel örnek içeriklerle)
   const handleLoadDemoData = () => {
     const samplePortrait =
       "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'><rect width='400' height='400' fill='%231e293b'/><circle cx='200' cy='150' r='70' fill='%236366f1'/><path d='M80 350 C80 250 320 250 320 350 Z' fill='%234f46e5'/><text x='200' y='380' text-anchor='middle' fill='white' font-family='sans-serif' font-size='20'>Örnek Emlakçı Portresi</text></svg>";
@@ -274,24 +398,42 @@ export default function InstagramPage() {
     setRooms("4+1");
     setFloor("Müstakil Villa");
     setBadgeText("SATILIK LÜKS VİLLA");
-    setCaptionText(
-      "✨ Bodrum Yalıkavak'ta Büyüleyici Deniz Manzaralı Müstakil Lüks Villa!\n\n" +
+    setPlatformCaptions({
+      sahibinden:
+        "BODRUM YALIKAVAK'TA DENİZ MANZARALI MÜSTAKİL HAVUZLU 4+1 LÜKS VİLLA\n\n" +
+        "• Konum: Muğla / Bodrum / Yalıkavak\n" +
+        "• Kullanım Alanı: 360 m² Net\n" +
+        "• Oda Sayısı: 4+1 ( tamamı ebeveyn banyolu )\n" +
+        "• Yapı Tipi: Müstakil Dubleks Villa\n" +
+        "• Fiyat: ₺18.750.000\n\n" +
+        "Yalıkavak'ın en prestijli bölgesinde yer alan müstakil villamız; özel sonsuzluk havuzu, geniş peyzajlı bahçesi, akıllı ev otomasyon sistemi ve kapalı otoparkı ile dört mevsim ayrıcalıklı bir yaşam sunmaktadır.\n\n" +
+        "Detaylı bilgi ve yerinde sunum randevusu için kurumsal iletişim hattımızdan ulaşabilirsiniz.",
+      instagram:
+        "✨ Bodrum Yalıkavak'ta Büyüleyici Deniz Manzaralı Müstakil Lüks Villa!\n\n" +
         "📍 Konum: Bodrum, Muğla\n" +
         "💰 Fiyat: ₺18.750.000\n" +
         "📐 Alan: 360 m² (4+1)\n" +
         "🏊‍♂️ Özel Sonsuzluk Havuzu & Geniş Peyzajlı Bahçe\n\n" +
-        "Detaylı bilgi ve randevu için DM atabilir veya bize ulaşabilirsiniz.\n\n" +
-        "#bodrumvilla #satılıkvilla #lükskonut #gayrimenkul #yalıkavak #realestate"
-    );
+        "Detaylı bilgi ve randevu için DM atabilir veya profilimizdeki iletişim numarasından bize ulaşabilirsiniz.\n\n" +
+        "#bodrumvilla #satılıkvilla #lükskonut #gayrimenkul #yalıkavak #realestate",
+      facebook:
+        "🏡 Bodrum Yalıkavak'ta Satılık Müstakil Havuzlu 4+1 Lüks Villa\n\n" +
+        "📍 Konum: Bodrum, Muğla\n" +
+        "💰 Fiyat: ₺18.750.000\n" +
+        "📐 Net Alan: 360 m² | 🚪 Oda: 4+1 | 🏢 Müstakil Villa\n\n" +
+        "Geniş aile yaşamına ve yüksek kira getirili yatırıma uygun, deniz manzaralı, özel havuzlu ve müstakil tapulu lüks villamız satışa sunulmuştur. Krediye ve takasa uygundur.\n\n" +
+        "📞 Detaylı bilgi, konum ve randevu için Messenger üzerinden mesaj gönderebilir veya doğrudan arayabilirsiniz.\n\n" +
+        "#bodrumemlak #satılıkvilla #gayrimenkul #lükskonut",
+    });
     setPropertyPhotos([
       { id: "1", url: sampleHouse, tag: "Dış Cephe & Havuz" },
       { id: "2", url: sampleInterior, tag: "Geniş Salon" },
     ]);
-    toast.success("Örnek test verileri yüklendi!");
+    toast.success("Sahibinden, Instagram ve Facebook için örnek veriler yüklendi!");
   };
 
-  // AI ile Instagram Gönderi Metni Üretimi
-  const handleGenerateAiCaption = async () => {
+  // AI ile Seçili Platform İçin Metin Üretimi
+  const handleGenerateAiCaption = async (targetPlatform: StudioPlatform = platform) => {
     setGeneratingCaption(true);
     try {
       const res = await fetch("/api/generate-instagram-caption", {
@@ -304,6 +446,7 @@ export default function InstagramPage() {
           rooms: rooms || "",
           floor: floor || "",
           badgeText: badgeText || "Satılık İlan",
+          platform: targetPlatform,
         }),
       });
 
@@ -313,8 +456,17 @@ export default function InstagramPage() {
         return;
       }
 
-      setCaptionText(data.caption);
-      toast.success("AI ile Instagram açıklaması oluşturuldu! ✨");
+      setPlatformCaptions((prev) => ({
+        ...prev,
+        [targetPlatform]: data.caption,
+      }));
+      const pName =
+        targetPlatform === "sahibinden"
+          ? "Sahibinden.com"
+          : targetPlatform === "facebook"
+          ? "Facebook"
+          : "Instagram";
+      toast.success(`AI ile ${pName} metni oluşturuldu! ✨`);
     } catch {
       toast.error("Bağlantı hatası, tekrar deneyin");
     } finally {
@@ -324,11 +476,17 @@ export default function InstagramPage() {
 
   // Hashtag ekleme
   const handleAddHashtags = () => {
+    if (platform === "sahibinden") {
+      toast.info("Sahibinden.com ilan açıklamalarında hashtag kullanılmaz.");
+      return;
+    }
     const tags =
-      "\n\n#emlak #satılıkkonut #gayrimenkul #emlakdanışmanı #lükskonut #satılıkvilla #yatırım #realestate #realtor #emlakdünyası";
-    if (!captionText.includes("#emlak")) {
-      setCaptionText((prev) => prev + tags);
-      toast.success("Popüler Instagram etiketleri eklendi! 🏷️");
+      platform === "facebook"
+        ? "\n\n#emlak #satılıkkonut #gayrimenkul #yatırım"
+        : "\n\n#emlak #satılıkkonut #gayrimenkul #emlakdanışmanı #lükskonut #satılıkvilla #yatırım #realestate #realtor #emlakdünyası";
+    if (!currentCaption.includes("#emlak")) {
+      setCurrentCaption(currentCaption + tags);
+      toast.success("Popüler etiketler eklendi! 🏷️");
     } else {
       toast.info("Etiketler zaten açıklamaya eklenmiş.");
     }
@@ -495,7 +653,6 @@ export default function InstagramPage() {
               },
             ]);
 
-            // Eğer henüz kapak fotoğrafı seçilmemişse ilk fotoğrafı kapak yap
             setCoverPhoto((currentCover) => currentCover || resized);
           };
           img.src = reader.result as string;
@@ -606,10 +763,10 @@ export default function InstagramPage() {
 
       setSlideBlobs(blobs);
       setSlideUrls(urls);
-      toast.success(`${blobs.length} slayt başarıyla oluşturuldu! 🎉`);
+      toast.success(`${blobs.length} görsel (${aspectRatio}) başarıyla oluşturuldu! 🎉`);
     } catch (err) {
       console.error("Render error:", err);
-      toast.error("Slaytlar oluşturulurken hata oluştu");
+      toast.error("Görseller oluşturulurken hata oluştu");
     } finally {
       setRendering(false);
     }
@@ -630,7 +787,7 @@ export default function InstagramPage() {
     slideUrls,
   ]);
 
-  // ZIP olarak indir
+  // ZIP olarak indir (görseller + platform metinleri .txt olarak)
   const handleDownloadZip = useCallback(async () => {
     if (slideBlobs.length === 0) return;
 
@@ -641,23 +798,38 @@ export default function InstagramPage() {
       slideBlobs.forEach((blob, i) => {
         const name =
           i === 0
-            ? "01_kapak_slayti.png"
-            : `${String(i + 1).padStart(2, "0")}_mulk_foto.png`;
+            ? `01_${platform}_kapak.png`
+            : `${String(i + 1).padStart(2, "0")}_${platform}_mulk_foto.png`;
         zip.file(name, blob);
       });
+
+      // Platform metinlerini de ZIP içerisine ekle
+      const textParts: string[] = [];
+      if (platformCaptions.sahibinden) {
+        textParts.push(`=== SAHİBİNDEN.COM İLAN METNİ ===\n${platformCaptions.sahibinden}`);
+      }
+      if (platformCaptions.instagram) {
+        textParts.push(`=== INSTAGRAM AÇIKLAMASI ===\n${platformCaptions.instagram}`);
+      }
+      if (platformCaptions.facebook) {
+        textParts.push(`=== FACEBOOK / MARKETPLACE METNİ ===\n${platformCaptions.facebook}`);
+      }
+      if (textParts.length > 0) {
+        zip.file("ilan_ve_sosyal_medya_metinleri.txt", textParts.join("\n\n\n"));
+      }
 
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "instagram_ilan_karti.zip";
+      a.download = `${platform}_ilan_paketi.zip`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success("Tüm slaytlar ZIP olarak indirildi!");
+      toast.success("Görseller ve platform metinleri ZIP olarak indirildi!");
     } catch {
       toast.error("İndirme başarısız");
     }
-  }, [slideBlobs]);
+  }, [slideBlobs, platform, platformCaptions]);
 
   const handleDownloadSingle = (index: number) => {
     const blob = slideBlobs[index];
@@ -665,7 +837,7 @@ export default function InstagramPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `instagram_slayt_${index + 1}.png`;
+    a.download = `${platform}_gorsel_${index + 1}.png`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -703,13 +875,14 @@ export default function InstagramPage() {
           <Lock className="w-8 h-8 text-indigo-400" />
         </div>
         <h1 className="text-2xl font-bold text-white mb-3">
-          Instagram İlan Kartı Oluşturucu
+          Sosyal Medya &amp; İlan Stüdyosu
         </h1>
         <p className="text-slate-400 mb-6 leading-relaxed">
           Bu özellik <strong>Bireysel</strong> ve <strong>Ofis</strong> planlarına
-          özeldir. Yapay zeka ile profesyonel portre üretimi, Instagram carousel
-          kartları oluşturma ve ZIP indirme özelliklerinden yararlanmak için
-          planınızı yükseltin.
+          özeldir. <strong>Sahibinden.com</strong> vitrin görselleri,{" "}
+          <strong>Instagram</strong> carousel/story ve{" "}
+          <strong>Facebook Marketplace</strong> kartları oluşturmak için planınızı
+          yükseltin.
         </p>
         <Button
           onClick={() => router.push("/pricing")}
@@ -755,10 +928,10 @@ export default function InstagramPage() {
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
               <Camera className="w-6 h-6 text-indigo-400" />
-              Instagram İlan Kartı Tasarımcısı
+              Sosyal Medya &amp; İlan Stüdyosu
             </h1>
             <p className="text-slate-400 text-xs sm:text-sm mt-0.5">
-              Çoklu kapak modelleri, AI destekli portre ve mülk carousel postları
+              Sahibinden.com vitrin görselleri, Instagram carousel/story ve Facebook paylaşımlarını tek yerden hazırlayın
             </p>
           </div>
         </div>
@@ -774,11 +947,57 @@ export default function InstagramPage() {
         </Button>
       </div>
 
+      {/* Hedef Platform Seçim Kartları (Sahibinden • Instagram • Facebook) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        {PLATFORM_CONFIGS.map((p) => {
+          const isSelected = platform === p.id;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => handleSelectPlatform(p.id)}
+              className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 ${
+                isSelected
+                  ? p.id === "sahibinden"
+                    ? "bg-yellow-400/10 border-yellow-400 text-white ring-1 ring-yellow-400/50"
+                    : p.id === "facebook"
+                    ? "bg-blue-500/15 border-blue-500 text-white ring-1 ring-blue-500/50"
+                    : "bg-indigo-500/15 border-indigo-500 text-white ring-1 ring-indigo-500/50"
+                  : "bg-white/3 border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200"
+              }`}
+            >
+              <span className="text-2xl shrink-0 mt-0.5">{p.icon}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-white">{p.label}</span>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
+                      isSelected
+                        ? p.id === "sahibinden"
+                          ? "bg-yellow-400 text-slate-950"
+                          : p.id === "facebook"
+                          ? "bg-blue-600 text-white"
+                          : "bg-indigo-600 text-white"
+                        : "bg-white/10 text-slate-300"
+                    }`}
+                  >
+                    {p.badge}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                  {p.desc}
+                </p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Adım Göstergesi (Stepper) */}
       <div className="flex items-center gap-1.5 sm:gap-3 mb-8 overflow-x-auto pb-2">
         {[
           { n: 1, label: "Kapak & Portre" },
-          { n: 2, label: "Bilgiler & Metin" },
+          { n: 2, label: "Platform, Boyut & Metin" },
           { n: 3, label: "Mülk Fotoğrafları" },
           { n: 4, label: "Önizleme & İndir" },
         ].map(({ n, label }) => (
@@ -827,11 +1046,11 @@ export default function InstagramPage() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-white text-lg flex items-center gap-2">
                   <Camera className="w-5 h-5 text-indigo-400" />
-                  Adım 1: Kapak Modeli & Portre Seçimi
+                  Adım 1: Kapak Modeli &amp; Portre Seçimi
                 </CardTitle>
                 <p className="text-slate-400 text-xs">
-                  Carousel gönderinizin 1. slaytı (kapak) için en uygun tasarım
-                  modelini seçin.
+                  Sahibinden vitrin fotoğrafı, Instagram veya Facebook kapağınız için
+                  en uygun tasarım modelini seçin.
                 </p>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -893,7 +1112,7 @@ export default function InstagramPage() {
                         Minimal Kurumsal
                       </div>
                       <div className="text-[11px] text-slate-400 leading-snug">
-                        Portresiz; sadece mülk görseli ve ofis logosu
+                        Portresiz; sadece mülk görseli ve ofis bilgisi
                       </div>
                     </button>
                   </div>
@@ -1095,7 +1314,7 @@ export default function InstagramPage() {
                     disabled={!canProceedStep1}
                     className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-9 px-4"
                   >
-                    Devam Et (Bilgiler)
+                    Devam Et (Platform &amp; Bilgiler)
                     <ArrowRight className="w-4 h-4 ml-1.5" />
                   </Button>
                 </div>
@@ -1113,11 +1332,11 @@ export default function InstagramPage() {
                   <div>
                     <CardTitle className="text-white text-lg flex items-center gap-2">
                       <Palette className="w-5 h-5 text-indigo-400" />
-                      Adım 2: Mülk Bilgileri, Tema & Açıklama
+                      Adım 2: Mülk Bilgileri, Format &amp; Platform Metni
                     </CardTitle>
                     <p className="text-slate-400 text-xs mt-0.5">
-                      Slaytta görünecek fiyat, konum detayları ve Instagram
-                      metnini girin.
+                      Sahibinden, Instagram ve Facebook için görsel boyutunu,
+                      temayı ve paylaşım metinlerini özelleştirin.
                     </p>
                   </div>
 
@@ -1134,7 +1353,9 @@ export default function InstagramPage() {
                         {savedListings.map((l) => (
                           <option key={l.id} value={l.id}>
                             {l.input_data?.price || "İlan"} —{" "}
-                            {(typeof l.input_data?.location === "object" ? l.input_data.location?.ilce : l.input_data?.location) || l.property_type}
+                            {(typeof l.input_data?.location === "object"
+                              ? l.input_data.location?.ilce
+                              : l.input_data?.location) || l.property_type}
                           </option>
                         ))}
                       </select>
@@ -1144,13 +1365,13 @@ export default function InstagramPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Tasarım Teması & Boyut Seçimi */}
-                <div className="grid sm:grid-cols-2 gap-4 p-3.5 bg-white/3 border border-white/10 rounded-xl">
+                <div className="space-y-4 p-3.5 bg-white/3 border border-white/10 rounded-xl">
                   <div>
                     <Label className="text-slate-300 mb-2 flex items-center gap-1.5 text-xs font-semibold">
                       <Palette className="w-3.5 h-3.5 text-indigo-400" />
                       Tasarım Teması
                     </Label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {THEME_OPTIONS.map((t) => (
                         <button
                           key={t.value}
@@ -1172,40 +1393,30 @@ export default function InstagramPage() {
 
                   <div>
                     <Label className="text-slate-300 mb-2 flex items-center gap-1.5 text-xs font-semibold">
-                      📏 Slayt Formatı
+                      📏 Görsel Boyutu (Sahibinden / Instagram / Facebook)
                     </Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setAspectRatio("4:5")}
-                        className={`p-2 rounded-lg border text-center transition-all text-xs ${
-                          aspectRatio === "4:5"
-                            ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
-                            : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        <span className="block text-xs font-bold mb-0.5">
-                          4:5 Dikey
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          1080×1350 (Önerilen)
-                        </span>
-                      </button>
-
-                      <button
-                        onClick={() => setAspectRatio("1:1")}
-                        className={`p-2 rounded-lg border text-center transition-all text-xs ${
-                          aspectRatio === "1:1"
-                            ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
-                            : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        <span className="block text-xs font-bold mb-0.5">
-                          1:1 Kare
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          1080×1080 (Klasik)
-                        </span>
-                      </button>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {ASPECT_RATIO_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setAspectRatio(opt.value)}
+                          className={`p-2 rounded-lg border text-center transition-all text-xs ${
+                            aspectRatio === opt.value
+                              ? "bg-indigo-500/20 border-indigo-500 text-white font-medium"
+                              : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <span className="block text-xs font-bold">
+                            {opt.label}
+                          </span>
+                          <span className="block text-[10px] text-indigo-300">
+                            {opt.size}
+                          </span>
+                          <span className="block text-[9px] text-slate-400 mt-0.5 truncate">
+                            {opt.platforms}
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -1292,21 +1503,38 @@ export default function InstagramPage() {
                   </div>
                 </div>
 
-                {/* Instagram Açıklama (Caption) */}
-                <div className="space-y-2">
+                {/* Çoklu Platform Metin Alanı (Sahibinden / Instagram / Facebook Sekmeli) */}
+                <div className="space-y-2.5 pt-1">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Label
-                      htmlFor="ig-caption"
-                      className="text-slate-300 text-xs"
-                    >
-                      Instagram Açıklama Metni (Caption)
-                    </Label>
+                    <div className="flex items-center gap-1.5">
+                      {(
+                        [
+                          { id: "sahibinden", label: "🏠 Sahibinden Metni" },
+                          { id: "instagram", label: "📸 Instagram Metni" },
+                          { id: "facebook", label: "📘 Facebook Metni" },
+                        ] as const
+                      ).map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => handleSelectPlatform(tab.id)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                            platform === tab.id
+                              ? "bg-indigo-600 text-white"
+                              : "bg-white/5 text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={handleGenerateAiCaption}
+                        onClick={() => handleGenerateAiCaption(platform)}
                         disabled={generatingCaption || !price}
                         className="h-7 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 px-2.5 border border-indigo-500/20"
                       >
@@ -1336,27 +1564,41 @@ export default function InstagramPage() {
                         ) : (
                           <>
                             <Sparkles className="w-3.5 h-3.5 mr-1 text-indigo-400" />
-                            AI ile Metin Üret
+                            AI ile{" "}
+                            {platform === "sahibinden"
+                              ? "Sahibinden"
+                              : platform === "facebook"
+                              ? "Facebook"
+                              : "Instagram"}{" "}
+                            Metni Üret
                           </>
                         )}
                       </Button>
 
-                      <button
-                        type="button"
-                        onClick={handleAddHashtags}
-                        className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors px-2 py-1"
-                      >
-                        <Hash className="w-3 h-3" />
-                        Hashtag Ekle
-                      </button>
+                      {platform !== "sahibinden" && (
+                        <button
+                          type="button"
+                          onClick={handleAddHashtags}
+                          className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors px-2 py-1"
+                        >
+                          <Hash className="w-3 h-3" />
+                          Hashtag Ekle
+                        </button>
+                      )}
                     </div>
                   </div>
                   <Textarea
                     id="ig-caption"
-                    value={captionText}
-                    onChange={(e) => setCaptionText(e.target.value)}
-                    placeholder="Gönderi açıklamanızı buraya yazın veya yukarıdaki 'AI ile Metin Üret' butonunu kullanın..."
-                    rows={5}
+                    value={currentCaption}
+                    onChange={(e) => setCurrentCaption(e.target.value)}
+                    placeholder={
+                      platform === "sahibinden"
+                        ? "Sahibinden.com ilan açıklamanızı buraya yazın veya 'AI ile Sahibinden Metni Üret' butonunu kullanın..."
+                        : platform === "facebook"
+                        ? "Facebook / Marketplace paylaşım metninizi buraya yazın veya AI ile üretin..."
+                        : "Instagram gönderi açıklamanızı buraya yazın veya AI ile üretin..."
+                    }
+                    rows={6}
                     className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 resize-y text-xs sm:text-sm leading-relaxed"
                   />
                 </div>
@@ -1393,7 +1635,7 @@ export default function InstagramPage() {
                   <div>
                     <CardTitle className="text-white text-lg flex items-center gap-2">
                       <ImagePlus className="w-5 h-5 text-emerald-400" />
-                      Adım 3: Mülk Fotoğrafları & Oda Etiketleri
+                      Adım 3: Mülk Fotoğrafları &amp; Oda Etiketleri
                     </CardTitle>
                     <p className="text-slate-400 text-xs mt-0.5">
                       İç ve dış mekan fotoğraflarını yükleyin. Dilerseniz her
@@ -1435,7 +1677,7 @@ export default function InstagramPage() {
                         />
                         <div className="absolute top-1 left-1">
                           <span className="bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
-                            {i + 2}. Slayt
+                            {i + 2}. Görsel
                           </span>
                         </div>
                       </div>
@@ -1445,7 +1687,7 @@ export default function InstagramPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-slate-300 font-medium flex items-center gap-1">
                             <Tag className="w-3 h-3 text-indigo-400" />
-                            Slayt Oda Etiketi (Opsiyonel)
+                            Görsel Oda Etiketi (Opsiyonel)
                           </span>
                         </div>
                         <Input
@@ -1534,7 +1776,7 @@ export default function InstagramPage() {
                     disabled={!canProceedStep3}
                     className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-9 px-4"
                   >
-                    Slaytları Oluştur & Önizle
+                    Görselleri Oluştur &amp; Önizle
                     <ArrowRight className="w-4 h-4 ml-1.5" />
                   </Button>
                 </div>
@@ -1550,11 +1792,11 @@ export default function InstagramPage() {
               <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white text-lg flex items-center gap-2">
-                    📱 Adım 4: Carousel Önizleme & İndirme
+                    📱 Adım 4: Çoklu Platform Önizleme &amp; İndirme
                   </CardTitle>
                   {slideBlobs.length > 0 && (
                     <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
-                      {slideBlobs.length} slayt hazır ({aspectRatio})
+                      {slideBlobs.length} görsel hazır ({aspectRatio})
                     </Badge>
                   )}
                 </div>
@@ -1582,7 +1824,7 @@ export default function InstagramPage() {
                       />
                     </svg>
                     <p className="text-white font-medium text-sm">
-                      Yüksek çözünürlüklü slaytlar oluşturuluyor...
+                      Yüksek çözünürlüklü görseller oluşturuluyor...
                     </p>
                     <p className="text-slate-500 text-xs mt-1">
                       Tuval grafikleri ve tipografi işleniyor
@@ -1592,27 +1834,44 @@ export default function InstagramPage() {
                   <>
                     <InstagramCarouselPreview
                       slides={slideUrls}
-                      caption={captionText}
+                      caption={currentCaption}
                       aspectRatio={aspectRatio}
+                      platform={platform}
+                      onPlatformChange={(nextP) => {
+                        setPlatform(nextP);
+                      }}
                     />
 
                     {slideBlobs.length > 0 && (
                       <div className="space-y-4 pt-2">
                         {/* Ana İndirme Butonu */}
-                        <div className="flex justify-center">
+                        <div className="flex flex-wrap justify-center gap-3">
                           <Button
                             onClick={handleDownloadZip}
-                            className="bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white h-11 px-8 shadow-lg shadow-emerald-950/30 text-sm font-semibold"
+                            className="bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white h-11 px-6 shadow-lg shadow-emerald-950/30 text-sm font-semibold"
                           >
                             <Download className="w-4 h-4 mr-2" />
-                            Tüm Slaytları İndir (ZIP)
+                            Tüm Paketi İndir (ZIP: Görseller + Metinler)
                           </Button>
+                          {currentCaption && (
+                            <Button
+                              variant="outline"
+                              onClick={async () => {
+                                await navigator.clipboard.writeText(currentCaption);
+                                toast.success("Seçili platform metni kopyalandı!");
+                              }}
+                              className="border-indigo-500/30 text-indigo-300 hover:text-white hover:bg-indigo-500/10 h-11 px-5 text-sm"
+                            >
+                              <Copy className="w-4 h-4 mr-2" />
+                              Açıklama Metnini Kopyala
+                            </Button>
+                          )}
                         </div>
 
                         {/* Tekil İndirmeler */}
                         <div>
                           <span className="text-slate-400 text-xs font-semibold block mb-2 text-center uppercase tracking-wider">
-                            Tek Tek Slayt İndir
+                            Tek Tek Görsel İndir
                           </span>
                           <div className="flex flex-wrap gap-2 justify-center">
                             {slideBlobs.map((_, i) => (
@@ -1624,7 +1883,7 @@ export default function InstagramPage() {
                                 className="border-white/10 text-slate-300 hover:text-white hover:bg-white/5 text-xs"
                               >
                                 <Download className="w-3 h-3 mr-1" />
-                                {i === 0 ? "Kapak" : `Slayt ${i + 1}`}
+                                {i === 0 ? "Kapak / Vitrin" : `Görsel ${i + 1}`}
                               </Button>
                             ))}
                           </div>
@@ -1662,14 +1921,14 @@ export default function InstagramPage() {
         <div className="lg:col-span-5 lg:sticky lg:top-6 space-y-4">
           {step < 4 ? (
             <LiveSlidePreview
+              platform={platform}
+              onPlatformChange={handleSelectPlatform}
               layoutType={layoutType}
               theme={theme}
               aspectRatio={aspectRatio}
               coverImage={currentLiveCoverImage}
               avatarImage={
-                layoutType === "property_focused"
-                  ? portraitPreview
-                  : null
+                layoutType === "property_focused" ? portraitPreview : null
               }
               price={price}
               location={location}
@@ -1686,12 +1945,13 @@ export default function InstagramPage() {
             <div className="p-5 rounded-2xl bg-white/5 border border-white/10 text-center space-y-3">
               <span className="text-2xl block">🎉</span>
               <h3 className="text-white font-bold text-sm">
-                Tasarımınız Yayına Hazır!
+                Çoklu Platform Paketiniz Hazır!
               </h3>
               <p className="text-slate-400 text-xs leading-relaxed">
-                Sol taraftaki panelden slaytları tek tek veya toplu ZIP olarak
-                indirebilir, Instagram açıklama metnini panonuza kopyalayarak
-                paylaşabilirsiniz.
+                Sol taraftaki panelden <strong>Sahibinden.com</strong>,{" "}
+                <strong>Instagram</strong> ve <strong>Facebook</strong>{" "}
+                sekmeleri arasında geçiş yapabilir, görselleri ve metinleri tek
+                tıkla indirebilirsiniz.
               </p>
               <div className="pt-2">
                 <Button

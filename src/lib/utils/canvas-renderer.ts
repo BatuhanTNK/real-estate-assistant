@@ -1,11 +1,17 @@
 /**
- * Canvas-based Instagram slide renderer.
- * 1080×1350 (4:5 dikey) veya 1080×1080 (1:1 kare) formatında slaytlar çizer.
+ * Canvas-based Multi-Platform (Sahibinden, Instagram, Facebook) slide renderer.
+ * Supports:
+ * - 4:5 (1080×1350 — Instagram / Facebook Dikey)
+ * - 1:1 (1080×1080 — Instagram / Facebook Kare)
+ * - 4:3 (1200×900  — Sahibinden.com Standart İlan Görseli)
+ * - 16:9 (1600×900 — Sahibinden Vitrin / Facebook Yatay Paylaşım)
+ * - 9:16 (1080×1920 — Instagram / Facebook Story & Reels)
  * Client-side DOM Canvas API kullanır.
  */
 
-export type SlideTheme = "modern_dark" | "gold_luxury" | "clean_glass";
-export type AspectRatio = "4:5" | "1:1";
+export type StudioPlatform = "instagram" | "facebook" | "sahibinden";
+export type SlideTheme = "modern_dark" | "gold_luxury" | "clean_glass" | "sahibinden_vitrin";
+export type AspectRatio = "4:5" | "1:1" | "4:3" | "16:9" | "9:16";
 export type CoverLayoutType = "property_focused" | "agent_focused" | "minimal_corporate";
 
 export interface CoverSlideOptions {
@@ -52,10 +58,20 @@ export interface PropertySlideOptions {
   aspectRatio?: AspectRatio;
 }
 
-function getDimensions(aspectRatio: AspectRatio = "4:5") {
-  return aspectRatio === "1:1"
-    ? { width: 1080, height: 1080 }
-    : { width: 1080, height: 1350 };
+export function getDimensions(aspectRatio: AspectRatio = "4:5") {
+  switch (aspectRatio) {
+    case "1:1":
+      return { width: 1080, height: 1080 };
+    case "4:3":
+      return { width: 1200, height: 900 };
+    case "16:9":
+      return { width: 1600, height: 900 };
+    case "9:16":
+      return { width: 1080, height: 1920 };
+    case "4:5":
+    default:
+      return { width: 1080, height: 1350 };
+  }
 }
 
 /**
@@ -122,7 +138,6 @@ function drawCircularImage(
   ctx.drawImage(img, centerX - radius, centerY - radius, d, d);
   ctx.restore();
 
-  // Dış Halka / Çerçeve
   if (borderWidth > 0) {
     ctx.save();
     ctx.beginPath();
@@ -150,11 +165,13 @@ export async function renderCoverSlide(
     }
   }
 
-  const { width, height } = getDimensions(options.aspectRatio);
+  const ratio = options.aspectRatio || "4:5";
+  const { width, height } = getDimensions(ratio);
+  const isLandscape = ratio === "4:3" || ratio === "16:9";
+  const isSquare = ratio === "1:1";
   const theme = options.theme || "modern_dark";
   const layoutType = options.layoutType || "property_focused";
-  const mainImageSrc =
-    options.coverImageSrc || options.portraitSrc || "";
+  const mainImageSrc = options.coverImageSrc || options.portraitSrc || "";
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -178,38 +195,46 @@ export async function renderCoverSlide(
 
   // 2. Tema Temelli Gradient / Overlay Çizimi
   if (theme === "modern_dark") {
-    const gradientH = height * (layoutType === "agent_focused" ? 0.58 : 0.62);
+    const gradientH =
+      height * (isLandscape ? 0.68 : layoutType === "agent_focused" ? 0.58 : 0.62);
     const gradient = ctx.createLinearGradient(0, height - gradientH, 0, height);
     gradient.addColorStop(0, "rgba(2, 6, 23, 0)");
     gradient.addColorStop(0.35, "rgba(2, 6, 23, 0.72)");
     gradient.addColorStop(1, "rgba(2, 6, 23, 0.98)");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, height - gradientH, width, gradientH);
-  } else if (theme === "gold_luxury") {
-    const gradientH = height * 0.64;
+  } else if (theme === "gold_luxury" || theme === "sahibinden_vitrin") {
+    const gradientH = height * (isLandscape ? 0.7 : 0.64);
     const gradient = ctx.createLinearGradient(0, height - gradientH, 0, height);
     gradient.addColorStop(0, "rgba(15, 23, 42, 0)");
-    gradient.addColorStop(0.35, "rgba(15, 23, 42, 0.82)");
+    gradient.addColorStop(0.35, "rgba(15, 23, 42, 0.84)");
     gradient.addColorStop(1, "rgba(10, 15, 26, 0.98)");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, height - gradientH, width, gradientH);
 
-    // Üst İnce Altın Çizgi
-    const goldGrad = ctx.createLinearGradient(0, 0, width, 0);
-    goldGrad.addColorStop(0, "#fbbf24");
-    goldGrad.addColorStop(0.5, "#fef08a");
-    goldGrad.addColorStop(1, "#d97706");
-    ctx.fillStyle = goldGrad;
-    ctx.fillRect(0, 0, width, 8);
+    // Üst Şerit (Altın veya Sahibinden Sarısı)
+    const topGrad = ctx.createLinearGradient(0, 0, width, 0);
+    if (theme === "sahibinden_vitrin") {
+      topGrad.addColorStop(0, "#facc15");
+      topGrad.addColorStop(0.5, "#fde047");
+      topGrad.addColorStop(1, "#eab308");
+    } else {
+      topGrad.addColorStop(0, "#fbbf24");
+      topGrad.addColorStop(0.5, "#fef08a");
+      topGrad.addColorStop(1, "#d97706");
+    }
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, width, 10);
   } else if (theme === "clean_glass") {
-    const cardH = height * (options.aspectRatio === "1:1" ? 0.48 : 0.44);
+    const cardH =
+      height * (isLandscape ? 0.52 : isSquare ? 0.48 : 0.44);
     const padX = 48;
-    const cardY = height - cardH - 44;
+    const cardY = height - cardH - (isLandscape ? 32 : 44);
     const cardW = width - padX * 2;
 
     ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
     ctx.beginPath();
-    ctx.roundRect(cardXFallback(padX, cardY), cardY, cardW, cardH, 24);
+    ctx.roundRect(cardY > 0 ? padX : 30, cardY, cardW, cardH, 24);
     ctx.fill();
 
     ctx.lineWidth = 2;
@@ -217,52 +242,55 @@ export async function renderCoverSlide(
     ctx.stroke();
   }
 
-  function cardXFallback(padX: number, cardY: number) {
-    return cardY > 0 ? padX : 30;
-  }
-
   // 3. Bilgi Metinleri & Rozet
-  const pad = 56;
+  const pad = isLandscape ? 52 : 56;
   const { overlay } = options;
 
-  // Özel Rozet (Badge - örn SATILIK LÜKS VİLLA)
-  const isSquare = options.aspectRatio === "1:1";
-  const badgeY = height - (isSquare ? 350 : 410);
+  const badgeY =
+    height - (isLandscape ? 305 : isSquare ? 350 : 410);
 
   if (overlay.badgeText) {
-    ctx.font = "bold 22px Inter, system-ui, sans-serif";
+    ctx.font = `bold ${isLandscape ? 20 : 22}px Inter, system-ui, sans-serif`;
     const badgeText = overlay.badgeText.toUpperCase();
     const badgeW = ctx.measureText(badgeText).width + 32;
-    const badgeH = 38;
+    const badgeH = isLandscape ? 34 : 38;
 
     ctx.fillStyle =
-      theme === "gold_luxury"
+      theme === "sahibinden_vitrin"
+        ? "#facc15"
+        : theme === "gold_luxury"
         ? "#d97706"
         : theme === "clean_glass"
         ? "#6366f1"
         : "#4f46e5";
     ctx.beginPath();
-    ctx.roundRect(pad, badgeY, badgeW, badgeH, 12);
+    ctx.roundRect(pad, badgeY, badgeW, badgeH, 10);
     ctx.fill();
 
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = theme === "sahibinden_vitrin" ? "#0f172a" : "#ffffff";
     ctx.textBaseline = "middle";
     ctx.fillText(badgeText, pad + 16, badgeY + badgeH / 2);
   }
 
   // Fiyat
-  const priceY = height - (isSquare ? 260 : 310);
+  const priceY =
+    height - (isLandscape ? 220 : isSquare ? 260 : 310);
   ctx.textBaseline = "bottom";
-  ctx.font = "bold 66px Inter, Outfit, system-ui, sans-serif";
-  ctx.fillStyle = theme === "gold_luxury" ? "#fef08a" : "#ffffff";
+  ctx.font = `bold ${isLandscape ? 58 : 66}px Inter, Outfit, system-ui, sans-serif`;
+  ctx.fillStyle =
+    theme === "sahibinden_vitrin"
+      ? "#fde047"
+      : theme === "gold_luxury"
+      ? "#fef08a"
+      : "#ffffff";
   ctx.shadowColor = "rgba(0,0,0,0.6)";
   ctx.shadowBlur = 10;
   ctx.fillText(overlay.price || "Fiyat Belirtilmedi", pad, priceY);
 
   // Detaylar Satırı (Konum • m² • Oda • Kat)
-  const detailY = priceY + 44;
+  const detailY = priceY + (isLandscape ? 38 : 44);
   ctx.shadowBlur = 0;
-  ctx.font = "500 30px Inter, system-ui, sans-serif";
+  ctx.font = `500 ${isLandscape ? 26 : 30}px Inter, system-ui, sans-serif`;
   ctx.fillStyle = "rgba(255,255,255,0.92)";
 
   const detailsParts = [
@@ -275,46 +303,48 @@ export async function renderCoverSlide(
   ctx.fillText(detailsParts.join("   •   "), pad, detailY);
 
   // Ayırıcı Çizgi
-  const lineY = detailY + 28;
+  const lineY = detailY + (isLandscape ? 22 : 28);
   ctx.fillStyle =
-    theme === "gold_luxury"
+    theme === "sahibinden_vitrin"
+      ? "rgba(250, 204, 21, 0.45)"
+      : theme === "gold_luxury"
       ? "rgba(245, 158, 11, 0.4)"
       : "rgba(255,255,255,0.18)";
   ctx.fillRect(pad, lineY, width - pad * 2, 2);
 
   // Footer: Danışman / Ofis / Avatar
-  const footerY = lineY + 36;
+  const footerY = lineY + (isLandscape ? 26 : 36);
 
-  // Eğer Mülk Odaklı Kapak ve Avatar Varsa, Footer'da veya Sağ Köşede Avatar Çiz
   if (layoutType === "property_focused" && options.avatarSrc) {
     try {
       const avatarImg = await loadImage(options.avatarSrc);
-      const avatarRadius = 42;
+      const avatarRadius = isLandscape ? 36 : 42;
       const avatarX = pad + avatarRadius;
       const avatarY = footerY + avatarRadius - 8;
 
       const ringColor =
-        theme === "gold_luxury"
+        theme === "sahibinden_vitrin"
+          ? "#facc15"
+          : theme === "gold_luxury"
           ? "#f59e0b"
           : theme === "clean_glass"
           ? "#818cf8"
           : "#6366f1";
       drawCircularImage(ctx, avatarImg, avatarX, avatarY, avatarRadius, ringColor, 3.5);
 
-      // Metinleri avatarın sağına yaz
       const textLeft = pad + avatarRadius * 2 + 24;
-      ctx.font = "600 28px Inter, system-ui, sans-serif";
+      ctx.font = `600 ${isLandscape ? 25 : 28}px Inter, system-ui, sans-serif`;
       ctx.fillStyle = "rgba(255,255,255,0.98)";
       ctx.textBaseline = "top";
       ctx.fillText(overlay.agentName || "Emlak Danışmanı", textLeft, footerY);
 
       if (overlay.officeName || overlay.phone) {
-        ctx.font = "400 21px Inter, system-ui, sans-serif";
+        ctx.font = `400 ${isLandscape ? 19 : 21}px Inter, system-ui, sans-serif`;
         ctx.fillStyle = "rgba(255,255,255,0.72)";
         const officeLine = [overlay.officeName, overlay.phone]
           .filter(Boolean)
           .join(" • ");
-        ctx.fillText(officeLine, textLeft, footerY + 34);
+        ctx.fillText(officeLine, textLeft, footerY + 32);
       }
     } catch (e) {
       console.warn("Avatar yüklenemedi:", e);
@@ -327,26 +357,30 @@ export async function renderCoverSlide(
   function drawDefaultFooterText() {
     ctx.textBaseline = "top";
     if (layoutType !== "minimal_corporate") {
-      ctx.font = "600 28px Inter, system-ui, sans-serif";
+      ctx.font = `600 ${isLandscape ? 25 : 28}px Inter, system-ui, sans-serif`;
       ctx.fillStyle = "rgba(255,255,255,0.96)";
       ctx.fillText(overlay.agentName || "Emlak Danışmanı", pad, footerY);
 
       if (overlay.officeName || overlay.phone) {
-        ctx.font = "400 22px Inter, system-ui, sans-serif";
+        ctx.font = `400 ${isLandscape ? 20 : 22}px Inter, system-ui, sans-serif`;
         ctx.fillStyle = "rgba(255,255,255,0.7)";
         const sub = [overlay.officeName, overlay.phone].filter(Boolean).join(" • ");
-        ctx.fillText(sub, pad, footerY + 34);
+        ctx.fillText(sub, pad, footerY + 32);
       }
     } else {
-      // Minimal Kurumsal
-      ctx.font = "700 28px Inter, system-ui, sans-serif";
-      ctx.fillStyle = theme === "gold_luxury" ? "#fef08a" : "rgba(255,255,255,0.95)";
+      ctx.font = `700 ${isLandscape ? 25 : 28}px Inter, system-ui, sans-serif`;
+      ctx.fillStyle =
+        theme === "sahibinden_vitrin"
+          ? "#fde047"
+          : theme === "gold_luxury"
+          ? "#fef08a"
+          : "rgba(255,255,255,0.95)";
       ctx.fillText(overlay.officeName || "Gayrimenkul & Danışmanlık", pad, footerY);
 
       if (overlay.phone) {
-        ctx.font = "500 22px Inter, system-ui, sans-serif";
+        ctx.font = `500 ${isLandscape ? 20 : 22}px Inter, system-ui, sans-serif`;
         ctx.fillStyle = "rgba(255,255,255,0.75)";
-        ctx.fillText(`İletişim: ${overlay.phone}`, pad, footerY + 34);
+        ctx.fillText(`İletişim: ${overlay.phone}`, pad, footerY + 32);
       }
     }
   }
@@ -363,7 +397,6 @@ export async function renderCoverSlide(
     }
   }
 
-  // Canvas → Blob
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
@@ -411,16 +444,22 @@ export async function renderPropertySlide(
     const tagX = pad;
     const tagY = pad;
 
-    ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
+    ctx.fillStyle =
+      theme === "sahibinden_vitrin"
+        ? "rgba(250, 204, 21, 0.92)"
+        : "rgba(15, 23, 42, 0.78)";
     ctx.beginPath();
     ctx.roundRect(tagX, tagY, tagW, tagH, 26);
     ctx.fill();
 
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+    ctx.strokeStyle =
+      theme === "sahibinden_vitrin"
+        ? "rgba(15, 23, 42, 0.35)"
+        : "rgba(255, 255, 255, 0.25)";
     ctx.stroke();
 
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = theme === "sahibinden_vitrin" ? "#0f172a" : "#ffffff";
     ctx.textBaseline = "middle";
     ctx.fillText(tagText, tagX + 22, tagY + tagH / 2);
   }
@@ -446,7 +485,11 @@ export async function renderPropertySlide(
     if (options.brand.officeName) {
       ctx.font = "600 26px Inter, system-ui, sans-serif";
       ctx.fillStyle =
-        theme === "gold_luxury" ? "#fef08a" : "rgba(255,255,255,0.94)";
+        theme === "sahibinden_vitrin"
+          ? "#fde047"
+          : theme === "gold_luxury"
+          ? "#fef08a"
+          : "rgba(255,255,255,0.94)";
       ctx.fillText(options.brand.officeName, pad, height - 30);
     }
 

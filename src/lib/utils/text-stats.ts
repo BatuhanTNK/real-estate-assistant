@@ -82,13 +82,6 @@ function checkPlatforms(charCount: number): PlatformCheck[] {
       icon: "🏠",
     },
     {
-      platform: "Hepsiemlak",
-      maxChars: 3000,
-      currentChars: charCount,
-      isOk: charCount <= 3000,
-      icon: "🏡",
-    },
-    {
       platform: "Instagram",
       maxChars: 2200,
       currentChars: charCount,
@@ -96,11 +89,18 @@ function checkPlatforms(charCount: number): PlatformCheck[] {
       icon: "📸",
     },
     {
-      platform: "Twitter/X",
-      maxChars: 280,
+      platform: "Facebook",
+      maxChars: 5000,
       currentChars: charCount,
-      isOk: charCount <= 280,
-      icon: "🐦",
+      isOk: charCount <= 5000,
+      icon: "📘",
+    },
+    {
+      platform: "Hepsiemlak",
+      maxChars: 3000,
+      currentChars: charCount,
+      isOk: charCount <= 3000,
+      icon: "🏡",
     },
   ];
 }

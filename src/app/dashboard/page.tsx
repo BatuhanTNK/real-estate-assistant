@@ -80,7 +80,7 @@ export default async function DashboardPage() {
           <Link href="/dashboard/instagram">
             <Button variant="outline" className="border-indigo-500/30 text-indigo-300 hover:text-white hover:bg-indigo-500/10">
               <Camera className="mr-1.5 size-4" />
-              Instagram Kartı
+              Sosyal Medya & İlan Stüdyosu
             </Button>
           </Link>
           <Link href="/dashboard/new">
@@ -167,24 +167,24 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* Promo Banner for Instagram Feature */}
+      {/* Promo Banner for Multi-Platform Studio Feature */}
       <Card className="bg-[#223127] border-indigo-500/20 backdrop-blur-sm mb-8 relative overflow-hidden">
 
         <CardContent className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Badge className="bg-indigo-600 text-white border-0 text-[10px]">
-                YENİ ÖZELLİK
+                ÇOKLU PLATFORM
               </Badge>
-              <span className="text-white font-semibold">Instagram İlan Kartı Oluşturucu</span>
+              <span className="text-white font-semibold">Sosyal Medya & İlan Stüdyosu (Sahibinden • Instagram • Facebook)</span>
             </div>
             <p className="text-slate-400 text-sm max-w-xl">
-              Fotoğrafınızı yükleyin, yapay zeka ile profesyonel emlakçı portresi üretelim! Mülk fotoğraflarınızla birleştirip indirilebilir Instagram Carousel slaytları hazırlayın.
+              Mülk fotoğraflarınızı ve yapay zeka portrenizi birleştirip Sahibinden.com vitrin görselleri, Instagram Carousel/Reels slaytları ve Facebook Marketplace paylaşım kartları ile hazır ilan metinlerini tek yerden üretin!
             </p>
           </div>
           <Link href="/dashboard/instagram" className="shrink-0">
             <Button className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium">
-              Kart Oluştur →
+              Stüdyoyu Aç →
             </Button>
           </Link>
         </CardContent>
